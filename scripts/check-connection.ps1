@@ -12,7 +12,7 @@ if (Test-Path $envFile) {
 }
 
 $fgtHost = $cfg.FGT_HOST
-Write-Host "Testing $fgtHost:443 ..." -ForegroundColor Cyan
+Write-Host "Testing ${fgtHost}:443 ..." -ForegroundColor Cyan
 $tcp = Test-NetConnection -ComputerName $fgtHost -Port 443 -WarningAction SilentlyContinue
 if (-not $tcp.TcpTestSucceeded) { Write-Host "UNREACHABLE" -ForegroundColor Red; exit 1 }
 Write-Host "Reachable." -ForegroundColor Green
