@@ -55,7 +55,7 @@ def main():
 
     csrf = ""
     for c in jar:
-        if c.name.lower() == "ccsrftoken":
+        if c.name.lower().startswith("ccsrftoken"):
             csrf = c.value.strip('"')
 
     def api(path):
