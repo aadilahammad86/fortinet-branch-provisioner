@@ -1,0 +1,13 @@
+# Secrets
+.env
+
+# Config backups may contain sensitive data
+configs/*.conf
+configs/*.bak
+
+# Cookie / session files
+*cookies*.txt
+
+# OS
+Thumbs.db
+Desktop.ini
