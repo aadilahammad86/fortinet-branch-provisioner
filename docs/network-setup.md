@@ -15,8 +15,13 @@ Unused: `dmz` (10.10.10.1, down), `internal3/4/5` (no IP, down).
 
 | Interface | Mode | Link | Default route |
 |-----------|------|------|---------------|
-| `wan1` | PPPoE (needs ISP user/pass) | **down (no cable)** | auto (defaultgw=enable) |
+| `wan1` | **PPPoE** (primary, distance 5) | **down (no cable)** | auto (defaultgw=enable) |
 | `wan2` | DHCP | **down (no cable)** | auto (defaultgw=enable) |
+
+**wan1 plug-and-play (PPPoE):** ISP username/password are loaded from `.env`
+(`FGT_PPPOE_USER` / `FGT_PPPOE_PASS`) via `scripts/configure-wan1-pppoe.py`.
+Once set, connecting the wan1 cable dials PPPoE automatically and both LANs
+get internet through the existing NAT policies — no further action needed.
 
 ## Firewall policies (internet / NAT)
 
