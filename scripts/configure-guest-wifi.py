@@ -1,11 +1,15 @@
 #!/usr/bin/env python3
-"""One-off: configure the Staff WiFi network (interface + DHCP).
+"""One-off: configure the Guest WiFi network (interface + DHCP).
 
-Thin CLI wrapper around fortigate.branch. Breaks the port out of the hardware
-switch first if needed, then reads the IP back to confirm it actually applied.
+Thin CLI wrapper around fortigate.branch.
 
-Usage:  python configure-wifi-lan.py [--ip 192.168.1.1] [--clients 25]
-                                     [--port internal2] [--first 2]
+Guest WiFi is deliberately internet-only: configure-internet-access.py adds its
+`-> wan1` NAT policy and nothing else, so the FortiGate's default deny keeps
+guests off the office LAN, Staff WiFi and (later) the HO VPN. Do not add a
+guest -> inside policy.
+
+Usage:  python configure-guest-wifi.py [--ip 192.168.2.1] [--clients 25]
+                                       [--port internal3] [--first 2]
 """
 import sys
 import argparse
@@ -19,10 +23,10 @@ from fortigate import branch                                   # noqa: E402
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--ip", default="192.168.1.1")
+    ap.add_argument("--ip", default="192.168.2.1")
     ap.add_argument("--clients", type=int, default=25)
     ap.add_argument("--first", type=int, default=2)
-    ap.add_argument("--port", default="internal2")
+    ap.add_argument("--port", default="internal3")
     args = ap.parse_args()
 
     cfg = load_env()
@@ -30,8 +34,8 @@ def main():
     log = lambda m: print(f"  {m}")                            # noqa: E731
 
     start, end = branch.compute_range(args.ip, args.clients, args.first)
-    print(f"Configuring Staff WiFi on {args.port} -> {args.ip} (DHCP {start}-{end})")
-    branch.set_lan_interface(fg, args.port, args.ip, branch.STAFF_ALIAS,
+    print(f"Configuring Guest WiFi on {args.port} -> {args.ip} (DHCP {start}-{end})")
+    branch.set_lan_interface(fg, args.port, args.ip, branch.GUEST_ALIAS,
                              branch.NETMASK, log)
     branch.set_dhcp_server(fg, args.port, args.ip, start, end, branch.NETMASK, log)
 
