@@ -24,6 +24,23 @@ fortinet-project/
 └── .env        # secrets — git-ignored
 ```
 
+## Provision a new branch (main workflow)
+
+For every new FortiGate, connect to it and run the provisioner. It asks only
+for what changes per branch (WiFi LAN gateway IP + client count) and applies
+the whole standard template (interface, DHCP, NAT policies, wan1 PPPoE
+plug-and-play). ISP PPPoE credentials are entered **on-site**, not here.
+
+```
+# interactive (operator answers prompts)
+python scripts\provision-branch.py
+
+# or non-interactive
+python scripts\provision-branch.py --wifi-ip 192.168.2.1 --clients 25 --hostname FGT-BranchB --yes
+```
+
+Set the target device / admin login in `.env` (or pass `--host/--user/--password`).
+
 ## Getting started
 
 1. Copy the secrets template and fill it in:
