@@ -289,18 +289,18 @@
         </div>
         <div class="tile">
           <div class="cap">Wi‑Fi devices</div>
-          <div class="k">25</div>
-          <div class="t">addresses ready for phones &amp; laptops</div>
+          <div class="k">50</div>
+          <div class="t">addresses ready across Staff &amp; Guest Wi‑Fi</div>
         </div>
         <div class="tile">
           <div class="cap">Automation</div>
-          <div class="k">6</div>
+          <div class="k">10</div>
           <div class="t">scripts saved &amp; version‑controlled</div>
         </div>
         <div class="tile">
-          <div class="cap">Internet ports</div>
-          <div class="k">2</div>
-          <div class="t">wan1 (PPPoE) &amp; wan2 (DHCP) ready</div>
+          <div class="cap">Inside networks</div>
+          <div class="k">3</div>
+          <div class="t">Office LAN, Staff Wi‑Fi, Guest Wi‑Fi</div>
         </div>
       </div>
     </div>
@@ -311,8 +311,9 @@
     <div class="wrap">
       <p class="sec-eyebrow">The big picture</p>
       <h2>How one branch is built</h2>
-      <p class="sec-note">The firewall sits in the middle. The internet comes in on one side.
-        The office Wi‑Fi and computers are on the other side. Head Office joins later over a VPN.</p>
+      <p class="sec-note">The firewall sits in the middle. One internet line comes in on one side.
+        Three separate networks — staff Wi‑Fi, guest Wi‑Fi and the office computers — sit on the
+        other side. Head Office joins later over a VPN.</p>
       <div class="diagram-wrap">
         <svg class="diagram" viewBox="0 0 860 430" role="img"
              aria-label="Branch network diagram: internet enters the FortiGate on wan1, office Wi-Fi and PC LAN connect on the inside, and a planned VPN links to Head Office.">
@@ -330,19 +331,26 @@
           <text class="dg-sub" x="390" y="158" text-anchor="middle" font-size="12">Firewall + Router</text>
           <text class="dg-sub" x="390" y="176" text-anchor="middle" font-size="11">manage: 172.21.0.1</text>
 
-          <!-- Wi-Fi branch -->
-          <path class="dg-line-p" d="M480 130 H640"/>
-          <text class="dg-sub" x="560" y="120" text-anchor="middle" font-size="11">internal2</text>
-          <rect class="dg-surface" x="640" y="96" width="170" height="72" rx="12"/>
-          <text class="dg-txt" x="725" y="126" text-anchor="middle" font-size="14">Wi‑Fi network</text>
-          <text class="dg-sub" x="725" y="146" text-anchor="middle" font-size="11">192.168.1.1 · 25 devices</text>
+          <!-- Staff Wi-Fi branch -->
+          <path class="dg-line-p" d="M480 107 H640"/>
+          <text class="dg-sub" x="560" y="97" text-anchor="middle" font-size="11">internal2</text>
+          <rect class="dg-surface" x="640" y="76" width="170" height="62" rx="12"/>
+          <text class="dg-txt" x="725" y="101" text-anchor="middle" font-size="14">Staff Wi‑Fi</text>
+          <text class="dg-sub" x="725" y="121" text-anchor="middle" font-size="11">192.168.1.1 · 25 devices</text>
+
+          <!-- Guest Wi-Fi branch -->
+          <path class="dg-line-p" d="M480 183 H640"/>
+          <text class="dg-sub" x="560" y="173" text-anchor="middle" font-size="11">internal3</text>
+          <rect class="dg-surface" x="640" y="152" width="170" height="62" rx="12"/>
+          <text class="dg-txt" x="725" y="177" text-anchor="middle" font-size="14">Guest Wi‑Fi</text>
+          <text class="dg-sub" x="725" y="197" text-anchor="middle" font-size="11">192.168.2.1 · internet only</text>
 
           <!-- PC LAN branch -->
-          <path class="dg-line" d="M480 178 H640"/>
-          <text class="dg-sub" x="560" y="200" text-anchor="middle" font-size="11">internal</text>
-          <rect class="dg-surface" x="640" y="188" width="170" height="66" rx="12"/>
-          <text class="dg-txt" x="725" y="216" text-anchor="middle" font-size="14">Office computers</text>
-          <text class="dg-sub" x="725" y="235" text-anchor="middle" font-size="11">172.21.0.x</text>
+          <path class="dg-line" d="M480 259 H640"/>
+          <text class="dg-sub" x="560" y="249" text-anchor="middle" font-size="11">internal</text>
+          <rect class="dg-surface" x="640" y="228" width="170" height="62" rx="12"/>
+          <text class="dg-txt" x="725" y="253" text-anchor="middle" font-size="14">Office computers</text>
+          <text class="dg-sub" x="725" y="273" text-anchor="middle" font-size="11">172.21.0.x</text>
 
           <!-- Planned VPN to HO -->
           <path class="dg-dash" d="M390 205 V330"/>
@@ -373,10 +381,13 @@
           <ul class="check">
             <li data-s="done"><span class="ic">✓</span><span><b>Connected and logged in.</b> <span class="d">We reached the firewall and confirmed the admin login works.</span></span></li>
             <li data-s="done"><span class="ic">✓</span><span><b>Read the device details.</b> <span class="d">Model FortiGate 60F, firmware v7.4.9 — saved to a report.</span></span></li>
-            <li data-s="done"><span class="ic">✓</span><span><b>Created the Wi‑Fi network.</b> <span class="d">A new network on port <span class="mono">internal2</span> at <span class="mono">192.168.1.1</span>.</span></span></li>
-            <li data-s="done"><span class="ic">✓</span><span><b>Turned on automatic addresses (DHCP).</b> <span class="d">Devices get <span class="mono">192.168.1.2–.26</span> — room for 25 devices.</span></span></li>
-            <li data-s="done"><span class="ic">✓</span><span><b>Opened the internet path.</b> <span class="d">Rules let Wi‑Fi and office devices reach the internet on either internet port.</span></span></li>
+            <li data-s="done"><span class="ic">✓</span><span><b>Created the Staff Wi‑Fi network.</b> <span class="d">A new network on port <span class="mono">internal2</span> at <span class="mono">192.168.1.1</span>.</span></span></li>
+            <li data-s="done"><span class="ic">✓</span><span><b>Created the Guest Wi‑Fi network.</b> <span class="d">A separate network on port <span class="mono">internal3</span> at <span class="mono">192.168.2.1</span> — visitors get internet only, and cannot reach office computers or staff devices.</span></span></li>
+            <li data-s="done"><span class="ic">✓</span><span><b>Turned on automatic addresses (DHCP).</b> <span class="d">Devices on each Wi‑Fi get <span class="mono">.2–.26</span> — room for 25 devices per network.</span></span></li>
+            <li data-s="done"><span class="ic">✓</span><span><b>Opened the internet path.</b> <span class="d">All three inside networks — office, staff Wi‑Fi and guest Wi‑Fi — reach the internet through the one provider line on <span class="mono">wan1</span>.</span></span></li>
             <li data-s="done"><span class="ic">✓</span><span><b>Made the internet port “plug‑and‑play”.</b> <span class="d">Port <span class="mono">wan1</span> is ready; the branch engineer only adds the provider login on‑site.</span></span></li>
+            <li data-s="done"><span class="ic">✓</span><span><b>Blocked Facebook and YouTube.</b> <span class="d">A website filter stops both by name on the office and staff networks. Guest Wi‑Fi is left open — it is already walled off from everything else.</span></span></li>
+            <li data-s="done"><span class="ic">✓</span><span><b>Blocked remote‑access and social‑media apps.</b> <span class="d">Whole categories are stopped — 91 remote‑control tools (Teamviewer, AnyDesk, RDP…) and 181 social apps (Instagram, Twitter, Snapchat…).</span></span></li>
             <li data-s="done"><span class="ic">✓</span><span><b>Saved everything as scripts.</b> <span class="d">All steps stored in a version‑controlled project so nothing is lost.</span></span></li>
           </ul>
         </div>
@@ -385,8 +396,8 @@
           <div class="phase-head"><h3>Phase 2 — What we are doing now</h3><span class="pill p-doing">In progress</span></div>
           <p>Making the setup fast and identical for every future branch.</p>
           <ul class="check">
-            <li data-s="doing"><span class="ic">●</span><span><b>One‑command branch setup.</b> <span class="d">A single script asks for the Wi‑Fi address and number of devices, then builds the whole branch.</span></span></li>
-            <li data-s="doing"><span class="ic">●</span><span><b>On‑site finish steps.</b> <span class="d">At each branch: type the internet provider login, plug the internet cable, and plug in the Wi‑Fi access point.</span></span></li>
+            <li data-s="doing"><span class="ic">●</span><span><b>One‑command branch setup.</b> <span class="d">A single script asks for the staff and guest Wi‑Fi addresses and device counts, then builds the whole branch.</span></span></li>
+            <li data-s="doing"><span class="ic">●</span><span><b>On‑site finish steps.</b> <span class="d">At each branch: type the internet provider login, plug the internet cable, plug in the two Wi‑Fi access points, install the security certificate on office devices, and set up the Head Office VPN.</span></span></li>
           </ul>
         </div>
 
@@ -396,7 +407,8 @@
           <ul class="check">
             <li data-s="plan"><span class="ic">→</span><span><b>Automatic config backup.</b> <span class="d">Save a full copy of each firewall’s settings right after setup, for quick recovery.</span></span></li>
             <li data-s="plan"><span class="ic">→</span><span><b>Unique addresses per branch.</b> <span class="d">Give every branch its own address range so they never clash over the VPN.</span></span></li>
-            <li data-s="plan"><span class="ic">→</span><span><b>VPN to Head Office.</b> <span class="d">A private, encrypted link so all branches connect to Head Office safely.</span></span></li>
+            <li data-s="plan"><span class="ic">→</span><span><b>VPN to Head Office.</b> <span class="d">A private, encrypted link so all branches connect to Head Office safely. This is set up <b>on‑site at each branch</b>, not from the central script.</span></span></li>
+            <li data-s="plan"><span class="ic">→</span><span><b>Register for security updates.</b> <span class="d">Once a branch is online, register the firewall so the app‑blocking list keeps updating with new apps.</span></span></li>
           </ul>
         </div>
 
@@ -409,33 +421,51 @@
     <div class="wrap">
       <p class="sec-eyebrow">The details</p>
       <h2>What we set up on the firewall</h2>
-      <p class="sec-note">Four simple pieces work together to give the branch safe Wi‑Fi and internet.</p>
+      <p class="sec-note">A few simple pieces work together to give the branch safe Wi‑Fi and internet.</p>
       <div class="cards">
         <div class="card">
-          <h3>📶 Wi‑Fi network</h3>
-          <p class="sub">A new network for phones and laptops.</p>
+          <h3>📶 Staff Wi‑Fi</h3>
+          <p class="sub">A network for staff phones and laptops.</p>
           <div class="kv">
             <div><span class="lab">Port</span><span class="val">internal2</span></div>
             <div><span class="lab">Gateway IP</span><span class="val">192.168.1.1</span></div>
-            <div><span class="lab">Network size</span><span class="val">/24</span></div>
+            <div><span class="lab">Addresses</span><span class="val">.2 – .26 (25)</span></div>
           </div>
         </div>
         <div class="card">
-          <h3>🎯 Automatic addresses</h3>
-          <p class="sub">Devices get an address by themselves (DHCP).</p>
+          <h3>🙋 Guest Wi‑Fi</h3>
+          <p class="sub">Visitors get internet — and nothing else.</p>
           <div class="kv">
-            <div><span class="lab">Range start</span><span class="val">192.168.1.2</span></div>
-            <div><span class="lab">Range end</span><span class="val">192.168.1.26</span></div>
-            <div><span class="lab">Max devices</span><span class="val">25</span></div>
+            <div><span class="lab">Port</span><span class="val">internal3</span></div>
+            <div><span class="lab">Gateway IP</span><span class="val">192.168.2.1</span></div>
+            <div><span class="lab">Addresses</span><span class="val">.2 – .26 (25)</span></div>
           </div>
         </div>
         <div class="card">
           <h3>🌐 Internet path</h3>
-          <p class="sub">Rules that let the branch reach the internet.</p>
+          <p class="sub">One ISP line; all three networks share it.</p>
           <div class="kv">
-            <div><span class="lab">Wi‑Fi → wan1</span><span class="val">NAT on</span></div>
-            <div><span class="lab">Wi‑Fi → wan2</span><span class="val">NAT on</span></div>
-            <div><span class="lab">Office → wan2</span><span class="val">NAT on</span></div>
+            <div><span class="lab">Office → wan1</span><span class="val">NAT on</span></div>
+            <div><span class="lab">Staff Wi‑Fi → wan1</span><span class="val">NAT on</span></div>
+            <div><span class="lab">Guest Wi‑Fi → wan1</span><span class="val">NAT on</span></div>
+          </div>
+        </div>
+        <div class="card">
+          <h3>🚫 Blocked websites</h3>
+          <p class="sub">Facebook and YouTube are blocked by name.</p>
+          <div class="kv">
+            <div><span class="lab">Facebook</span><span class="val">blocked</span></div>
+            <div><span class="lab">YouTube</span><span class="val">blocked</span></div>
+            <div><span class="lab">Applies to</span><span class="val">Office + Staff</span></div>
+          </div>
+        </div>
+        <div class="card">
+          <h3>🛑 Blocked app types</h3>
+          <p class="sub">Whole categories of apps are stopped.</p>
+          <div class="kv">
+            <div><span class="lab">Remote access</span><span class="val">91 apps</span></div>
+            <div><span class="lab">Social media</span><span class="val">181 apps</span></div>
+            <div><span class="lab">Applies to</span><span class="val">Office + Staff</span></div>
           </div>
         </div>
         <div class="card">
@@ -460,16 +490,18 @@
       <ol class="steps">
         <li><b>Connect to the new firewall.</b><p>Plug your computer into the firewall and open the setup script.</p></li>
         <li><b>Run the script.</b><p>Start <span class="mono">provision-branch.py</span>. It greets you and asks for a couple of details.</p></li>
-        <li><b>Answer two questions.</b><p>Type the branch Wi‑Fi address (for example <span class="mono">192.168.2.1</span>) and how many devices you need. The script works out the rest.</p></li>
-        <li><b>Let it build.</b><p>The script sets the Wi‑Fi, automatic addresses, internet rules, and the plug‑and‑play internet port — all in seconds.</p></li>
-        <li><b>Finish on‑site.</b><p>Enter the internet provider’s username and password, plug in the internet cable, and connect the Wi‑Fi access point. Done.</p></li>
+        <li><b>Answer a few questions.</b><p>Type the staff Wi‑Fi address (for example <span class="mono">192.168.1.1</span>), the guest Wi‑Fi address (for example <span class="mono">192.168.2.1</span>), and how many devices each needs. The script works out the rest.</p></li>
+        <li><b>Let it build.</b><p>The script sets both Wi‑Fi networks, automatic addresses, internet rules, and the plug‑and‑play internet port — all in seconds.</p></li>
+        <li><b>Finish on‑site.</b><p>Enter the internet provider’s username and password, plug in the internet cable, connect the two Wi‑Fi access points, install the security certificate on the office devices, and set up the Head Office VPN. Done.</p></li>
       </ol>
       <div class="code">
         <pre><span class="c"># Simple way — the script asks you the questions</span>
 python scripts\provision-branch.py
 
 <span class="c"># Fast way — give the answers directly</span>
-python scripts\provision-branch.py --wifi-ip 192.168.2.1 --clients 25 --hostname FGT-BranchB --yes</pre>
+python scripts\provision-branch.py --wifi-ip 192.168.1.1 --clients 25 ^
+                                   --guest-ip 192.168.2.1 --guest-clients 25 ^
+                                   --hostname FGT-BranchB --yes</pre>
       </div>
     </div>
   </section>
@@ -576,10 +608,15 @@ python scripts\provision-branch.py --wifi-ip 192.168.2.1 --clients 25 --hostname
             <tr><th>Device model</th><td><span class="mono">FortiGate 60F</span></td></tr>
             <tr><th>Firmware</th><td><span class="mono">v7.4.9 (build 2829)</span></td></tr>
             <tr><th>Manage address</th><td><span class="mono">https://172.21.0.1</span> · admin</td></tr>
-            <tr><th>Wi‑Fi port</th><td><span class="mono">internal2</span> → <span class="mono">192.168.1.1/24</span></td></tr>
-            <tr><th>Wi‑Fi DHCP range</th><td><span class="mono">192.168.1.2 – 192.168.1.26</span> (25 devices)</td></tr>
-            <tr><th>Internet ports</th><td><span class="mono">wan1</span> = PPPoE · <span class="mono">wan2</span> = DHCP</td></tr>
-            <tr><th>Internet rules</th><td>Wi‑Fi → wan1, Wi‑Fi → wan2, Office → wan2 (all NAT on)</td></tr>
+            <tr><th>Office LAN</th><td><span class="mono">internal</span> → <span class="mono">172.21.0.1/21</span></td></tr>
+            <tr><th>Staff Wi‑Fi port</th><td><span class="mono">internal2</span> → <span class="mono">192.168.1.1/24</span> · DHCP <span class="mono">.2 – .26</span> (25)</td></tr>
+            <tr><th>Guest Wi‑Fi port</th><td><span class="mono">internal3</span> → <span class="mono">192.168.2.1/24</span> · DHCP <span class="mono">.2 – .26</span> (25)</td></tr>
+            <tr><th>Internet port</th><td><span class="mono">wan1</span> = PPPoE (one ISP per branch) · <span class="mono">wan2</span> = spare, unused</td></tr>
+            <tr><th>Internet rules</th><td>Office → wan1, Staff Wi‑Fi → wan1, Guest Wi‑Fi → wan1 (all NAT on)</td></tr>
+            <tr><th>Guest isolation</th><td>Guest has no rule to the office or staff networks — blocked by default</td></tr>
+            <tr><th>Blocked websites</th><td>Facebook &amp; YouTube — office and staff networks only</td></tr>
+            <tr><th>Blocked app types</th><td>Remote access (91 apps) &amp; social media (181 apps)</td></tr>
+            <tr><th>On‑site certificate</th><td>Install <span class="mono">Fortinet_CA_SSL</span> on every device — required for the website blocking to work cleanly</td></tr>
             <tr><th>Main setup script</th><td><span class="mono">scripts\provision-branch.py</span></td></tr>
             <tr><th>Next big step</th><td>VPN from each branch to Head Office</td></tr>
           </tbody>
