@@ -8,6 +8,18 @@ configs/*.bak
 # Cookie / session files
 *cookies*.txt
 
+# Python
+__pycache__/
+*.pyc
+
+# PyInstaller build output (rebuild with: python build_exe.py)
+build/
+dist/
+*.spec
+
+# Branch profiles may name real sites/subnets
+profiles/
+
 # OS
 Thumbs.db
 Desktop.ini
