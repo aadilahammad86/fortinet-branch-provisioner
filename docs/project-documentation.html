@@ -1,0 +1,597 @@
+<title>FortiGate Branch Rollout</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  /* ---------- Design tokens : LIGHT (default) ---------- */
+  :root{
+    --ground:#F4F6F8;
+    --surface:#FFFFFF;
+    --surface-2:#EDF1F4;
+    --ink:#18222F;
+    --muted:#5A6675;
+    --line:#DFE5EB;
+    --primary:#0F766E;      /* teal */
+    --primary-ink:#0B5A54;
+    --primary-soft:#D8EEEB;
+    --accent:#B45309;       /* copper, used sparingly */
+    --ok:#157F3B; --ok-soft:#DCF3E3;
+    --warn:#B4600A; --warn-soft:#FBEBCF;
+    --info:#1E4FD1; --info-soft:#DCE6FF;
+    --shadow:0 1px 2px rgba(24,34,47,.05),0 8px 24px -12px rgba(24,34,47,.18);
+    --radius:14px;
+    --font-sans:system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    --font-mono:ui-monospace,"Cascadia Code","SFMono-Regular",Consolas,"Liberation Mono",monospace;
+    --maxw:1000px;
+  }
+  /* ---------- DARK via system preference (un-stamped) ---------- */
+  @media (prefers-color-scheme:dark){
+    :root:not([data-theme="light"]){
+      --ground:#0C131E;
+      --surface:#141E2B;
+      --surface-2:#1B2736;
+      --ink:#E7ECF3;
+      --muted:#94A2B6;
+      --line:#27333F;
+      --primary:#2CD4BF;
+      --primary-ink:#7EEBDD;
+      --primary-soft:#103733;
+      --accent:#E19A5E;
+      --ok:#49D07E; --ok-soft:#123322;
+      --warn:#F4B740; --warn-soft:#392C0F;
+      --info:#84A6FF; --info-soft:#152A50;
+      --shadow:0 1px 2px rgba(0,0,0,.4),0 10px 30px -14px rgba(0,0,0,.6);
+    }
+  }
+  /* ---------- DARK via explicit toggle ---------- */
+  :root[data-theme="dark"]{
+    --ground:#0C131E;
+    --surface:#141E2B;
+    --surface-2:#1B2736;
+    --ink:#E7ECF3;
+    --muted:#94A2B6;
+    --line:#27333F;
+    --primary:#2CD4BF;
+    --primary-ink:#7EEBDD;
+    --primary-soft:#103733;
+    --accent:#E19A5E;
+    --ok:#49D07E; --ok-soft:#123322;
+    --warn:#F4B740; --warn-soft:#392C0F;
+    --info:#84A6FF; --info-soft:#152A50;
+    --shadow:0 1px 2px rgba(0,0,0,.4),0 10px 30px -14px rgba(0,0,0,.6);
+  }
+
+  *{box-sizing:border-box}
+  html{-webkit-text-size-adjust:100%}
+  body{
+    margin:0;background:var(--ground);color:var(--ink);
+    font-family:var(--font-sans);font-size:17px;line-height:1.65;
+    -webkit-font-smoothing:antialiased;
+  }
+  .wrap{max-width:var(--maxw);margin:0 auto;padding:0 20px}
+  a{color:var(--primary-ink);text-decoration:none}
+  a:hover{text-decoration:underline}
+  code,.mono{font-family:var(--font-mono);font-size:.92em}
+  h1,h2,h3{text-wrap:balance;line-height:1.2}
+  :focus-visible{outline:2px solid var(--primary);outline-offset:2px;border-radius:4px}
+
+  /* ---------- Header ---------- */
+  header.hero{
+    background:
+      radial-gradient(120% 140% at 85% -20%, var(--primary-soft), transparent 55%),
+      var(--surface);
+    border-bottom:1px solid var(--line);
+    padding:56px 0 40px;
+  }
+  .eyebrow{
+    font-size:.72rem;font-weight:700;letter-spacing:.16em;text-transform:uppercase;
+    color:var(--primary-ink);margin:0 0 14px;display:flex;align-items:center;gap:9px;
+  }
+  .eyebrow::before{content:"";width:26px;height:2px;background:var(--primary);display:inline-block}
+  h1{font-size:clamp(2.1rem,5vw,3.1rem);margin:0 0 12px;letter-spacing:-.02em}
+  .lede{font-size:clamp(1.05rem,2.2vw,1.25rem);color:var(--muted);max-width:60ch;margin:0}
+  .meta{display:flex;flex-wrap:wrap;gap:10px;margin-top:26px}
+  .chip{
+    display:inline-flex;align-items:center;gap:7px;background:var(--surface-2);
+    border:1px solid var(--line);border-radius:999px;padding:6px 13px;
+    font-size:.82rem;color:var(--muted);
+  }
+  .chip b{color:var(--ink);font-weight:600}
+
+  /* ---------- Section rhythm ---------- */
+  section{padding:46px 0}
+  section+section{border-top:1px solid var(--line)}
+  .sec-eyebrow{font-size:.72rem;font-weight:700;letter-spacing:.16em;text-transform:uppercase;color:var(--accent);margin:0 0 8px}
+  h2{font-size:clamp(1.5rem,3vw,2rem);margin:0 0 6px;letter-spacing:-.01em}
+  .sec-note{color:var(--muted);margin:0 0 26px;max-width:64ch}
+
+  /* ---------- Summary callout ---------- */
+  .callout{
+    background:var(--surface);border:1px solid var(--line);border-left:4px solid var(--primary);
+    border-radius:var(--radius);padding:22px 24px;box-shadow:var(--shadow);
+  }
+  .callout p{margin:0 0 10px}
+  .callout p:last-child{margin:0}
+
+  /* ---------- Stat tiles ---------- */
+  .tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:16px}
+  .tile{
+    background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);
+    padding:20px;box-shadow:var(--shadow);position:relative;overflow:hidden;
+  }
+  .tile .k{font-size:2rem;font-weight:750;letter-spacing:-.02em;font-variant-numeric:tabular-nums}
+  .tile .t{color:var(--muted);font-size:.9rem;margin-top:2px}
+  .tile .cap{font-size:.72rem;text-transform:uppercase;letter-spacing:.1em;color:var(--primary-ink);font-weight:700;margin-bottom:8px}
+
+  /* ---------- Status legend + pills ---------- */
+  .legend{display:flex;flex-wrap:wrap;gap:16px;margin:0 0 24px;font-size:.85rem;color:var(--muted)}
+  .dot{display:inline-flex;align-items:center;gap:7px}
+  .dot::before{content:"";width:11px;height:11px;border-radius:50%;background:var(--c)}
+  .pill{
+    display:inline-flex;align-items:center;gap:6px;font-size:.72rem;font-weight:700;
+    text-transform:uppercase;letter-spacing:.06em;padding:4px 10px;border-radius:999px;
+    background:var(--pb);color:var(--pc);border:1px solid transparent;white-space:nowrap;
+  }
+  .p-done{--pb:var(--ok-soft);--pc:var(--ok)}
+  .p-doing{--pb:var(--warn-soft);--pc:var(--warn)}
+  .p-plan{--pb:var(--info-soft);--pc:var(--info)}
+
+  /* ---------- Timeline ---------- */
+  .phase{display:grid;grid-template-columns:1fr;gap:16px}
+  .phase-card{
+    background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);
+    box-shadow:var(--shadow);padding:22px 24px;border-top:3px solid var(--edge);
+  }
+  .phase-card[data-s="done"]{--edge:var(--ok)}
+  .phase-card[data-s="doing"]{--edge:var(--warn)}
+  .phase-card[data-s="plan"]{--edge:var(--info)}
+  .phase-head{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:6px}
+  .phase-head h3{margin:0;font-size:1.15rem}
+  .phase-card>p{color:var(--muted);margin:.2rem 0 14px}
+  ul.check{list-style:none;margin:0;padding:0;display:grid;gap:10px}
+  ul.check li{display:flex;gap:11px;align-items:flex-start}
+  ul.check li .ic{
+    flex:0 0 auto;width:22px;height:22px;border-radius:50%;display:grid;place-items:center;
+    font-size:.72rem;font-weight:800;margin-top:1px;background:var(--ib);color:var(--icl);
+  }
+  li[data-s="done"] .ic{--ib:var(--ok-soft);--icl:var(--ok)}
+  li[data-s="doing"] .ic{--ib:var(--warn-soft);--icl:var(--warn)}
+  li[data-s="plan"] .ic{--ib:var(--info-soft);--icl:var(--info)}
+  ul.check li b{font-weight:650}
+  ul.check li span.d{color:var(--muted)}
+
+  /* ---------- Detail cards grid ---------- */
+  .cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:16px}
+  .card{
+    background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);
+    box-shadow:var(--shadow);padding:22px;
+  }
+  .card h3{margin:0 0 4px;font-size:1.08rem;display:flex;align-items:center;gap:9px}
+  .card .sub{color:var(--muted);font-size:.92rem;margin:0 0 14px}
+  .kv{display:grid;gap:8px;margin:0}
+  .kv div{display:flex;justify-content:space-between;gap:14px;padding:7px 0;border-bottom:1px dashed var(--line)}
+  .kv div:last-child{border-bottom:0}
+  .kv .lab{color:var(--muted);font-size:.9rem}
+  .kv .val{font-family:var(--font-mono);font-size:.9rem;text-align:right;font-weight:600}
+
+  /* ---------- Steps ---------- */
+  ol.steps{list-style:none;counter-reset:s;margin:0;padding:0;display:grid;gap:14px}
+  ol.steps li{
+    counter-increment:s;position:relative;padding:16px 18px 16px 58px;
+    background:var(--surface);border:1px solid var(--line);border-radius:12px;box-shadow:var(--shadow);
+  }
+  ol.steps li::before{
+    content:counter(s);position:absolute;left:16px;top:14px;width:28px;height:28px;
+    background:var(--primary);color:#fff;border-radius:8px;display:grid;place-items:center;
+    font-weight:750;font-size:.95rem;
+  }
+  ol.steps li b{font-weight:650}
+  ol.steps li p{margin:4px 0 0;color:var(--muted);font-size:.94rem}
+
+  /* ---------- Code block ---------- */
+  .code{
+    background:var(--surface-2);border:1px solid var(--line);border-radius:12px;
+    padding:14px 16px;overflow-x:auto;margin:14px 0 0;
+  }
+  .code pre{margin:0;font-family:var(--font-mono);font-size:.86rem;line-height:1.7;color:var(--ink)}
+  .code .c{color:var(--muted)}
+
+  /* ---------- Diagram ---------- */
+  .diagram-wrap{
+    background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);
+    box-shadow:var(--shadow);padding:18px;overflow-x:auto;
+  }
+  .diagram{width:100%;min-width:640px;height:auto;display:block}
+  .dg-surface{fill:var(--surface-2);stroke:var(--line)}
+  .dg-fw{fill:var(--primary-soft);stroke:var(--primary)}
+  .dg-hub{fill:var(--primary);stroke:var(--primary)}
+  .dg-cloud{fill:var(--surface-2);stroke:var(--muted)}
+  .dg-txt{fill:var(--ink);font-family:var(--font-sans);font-weight:600}
+  .dg-txt-w{fill:#fff;font-family:var(--font-sans);font-weight:700}
+  .dg-sub{fill:var(--muted);font-family:var(--font-mono)}
+  .dg-line{stroke:var(--muted);stroke-width:2;fill:none}
+  .dg-line-p{stroke:var(--primary);stroke-width:2.5;fill:none}
+  .dg-dash{stroke:var(--info);stroke-width:2;fill:none;stroke-dasharray:7 6}
+  .dg-cap{fill:var(--info);font-family:var(--font-sans);font-weight:700;font-size:12px}
+
+  /* ---------- Table ---------- */
+  .tbl-wrap{overflow-x:auto;border:1px solid var(--line);border-radius:var(--radius);box-shadow:var(--shadow)}
+  table{border-collapse:collapse;width:100%;min-width:520px;background:var(--surface)}
+  th,td{text-align:left;padding:13px 16px;border-bottom:1px solid var(--line);font-size:.92rem}
+  th{background:var(--surface-2);font-size:.72rem;text-transform:uppercase;letter-spacing:.08em;color:var(--muted)}
+  tr:last-child td{border-bottom:0}
+  td .mono{font-weight:600}
+
+  /* ---------- Glossary ---------- */
+  .gloss{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:14px}
+  .term{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:16px 18px}
+  .term dt{font-weight:700;color:var(--primary-ink);margin-bottom:4px}
+  .term dd{margin:0;color:var(--muted);font-size:.94rem}
+
+  /* ---------- Footer ---------- */
+  footer{padding:34px 0 60px;color:var(--muted);font-size:.85rem;text-align:center}
+
+  @media (max-width:560px){
+    body{font-size:16px}
+    section{padding:36px 0}
+  }
+  @media (prefers-reduced-motion:no-preference){
+    .fade{animation:fade .6s ease both}
+    @keyframes fade{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+  }
+</style>
+
+<header class="hero">
+  <div class="wrap fade">
+    <p class="eyebrow">Network Project · Fortinet</p>
+    <h1>FortiGate Branch Rollout</h1>
+    <p class="lede">How we set up one branch firewall, turned it into a repeatable recipe,
+      and how we will connect every branch back to Head Office — explained in simple steps.</p>
+    <div class="meta">
+      <span class="chip">Device <b>FortiGate&nbsp;60F</b></span>
+      <span class="chip">Firmware <b>v7.4.9</b></span>
+      <span class="chip">Serial <b>FGT60FTK25040370</b></span>
+      <span class="chip">Updated <b>15 Aug 2026</b></span>
+    </div>
+  </div>
+</header>
+
+<main>
+
+  <!-- IN ONE MINUTE -->
+  <section>
+    <div class="wrap">
+      <p class="sec-eyebrow">Start here</p>
+      <h2>The project in one minute</h2>
+      <div class="callout">
+        <p>We are setting up <b>Fortinet firewalls</b> for our branch offices. A firewall is the
+          box that gives a branch safe internet and Wi‑Fi, and protects the network.</p>
+        <p>We built the full setup on <b>one</b> firewall first. Then we saved every step as a
+          <b>script</b> — a small program that repeats the same work automatically. Now, for each
+          new branch, we run the script, answer two simple questions, and the firewall is ready
+          in seconds instead of doing everything by hand.</p>
+        <p>The last plan is to <b>join all branches to Head Office</b> over a private, encrypted
+          link (a VPN), so every office feels like one network.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- AT A GLANCE -->
+  <section>
+    <div class="wrap">
+      <p class="sec-eyebrow">At a glance</p>
+      <h2>Where we are now</h2>
+      <p class="sec-note">One branch is fully built and tested. The tools to repeat it are ready.
+        The Head Office link is designed and waiting to be built.</p>
+      <div class="tiles">
+        <div class="tile">
+          <div class="cap">Built &amp; tested</div>
+          <div class="k">1</div>
+          <div class="t">branch firewall fully configured</div>
+        </div>
+        <div class="tile">
+          <div class="cap">Wi‑Fi devices</div>
+          <div class="k">25</div>
+          <div class="t">addresses ready for phones &amp; laptops</div>
+        </div>
+        <div class="tile">
+          <div class="cap">Automation</div>
+          <div class="k">6</div>
+          <div class="t">scripts saved &amp; version‑controlled</div>
+        </div>
+        <div class="tile">
+          <div class="cap">Internet ports</div>
+          <div class="k">2</div>
+          <div class="t">wan1 (PPPoE) &amp; wan2 (DHCP) ready</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- DIAGRAM -->
+  <section>
+    <div class="wrap">
+      <p class="sec-eyebrow">The big picture</p>
+      <h2>How one branch is built</h2>
+      <p class="sec-note">The firewall sits in the middle. The internet comes in on one side.
+        The office Wi‑Fi and computers are on the other side. Head Office joins later over a VPN.</p>
+      <div class="diagram-wrap">
+        <svg class="diagram" viewBox="0 0 860 430" role="img"
+             aria-label="Branch network diagram: internet enters the FortiGate on wan1, office Wi-Fi and PC LAN connect on the inside, and a planned VPN links to Head Office.">
+          <!-- Internet cloud -->
+          <ellipse class="dg-cloud" cx="95" cy="150" rx="70" ry="42"/>
+          <text class="dg-txt" x="95" y="147" text-anchor="middle" font-size="15">Internet</text>
+          <text class="dg-sub" x="95" y="166" text-anchor="middle" font-size="11">ISP line</text>
+          <!-- line internet -> fw -->
+          <path class="dg-line-p" d="M165 150 H300"/>
+          <text class="dg-sub" x="232" y="140" text-anchor="middle" font-size="11">wan1 · PPPoE</text>
+
+          <!-- Firewall -->
+          <rect class="dg-fw" x="300" y="95" width="180" height="110" rx="14" stroke-width="2"/>
+          <text class="dg-txt" x="390" y="135" text-anchor="middle" font-size="17">FortiGate 60F</text>
+          <text class="dg-sub" x="390" y="158" text-anchor="middle" font-size="12">Firewall + Router</text>
+          <text class="dg-sub" x="390" y="176" text-anchor="middle" font-size="11">manage: 172.21.0.1</text>
+
+          <!-- Wi-Fi branch -->
+          <path class="dg-line-p" d="M480 130 H640"/>
+          <text class="dg-sub" x="560" y="120" text-anchor="middle" font-size="11">internal2</text>
+          <rect class="dg-surface" x="640" y="96" width="170" height="72" rx="12"/>
+          <text class="dg-txt" x="725" y="126" text-anchor="middle" font-size="14">Wi‑Fi network</text>
+          <text class="dg-sub" x="725" y="146" text-anchor="middle" font-size="11">192.168.1.1 · 25 devices</text>
+
+          <!-- PC LAN branch -->
+          <path class="dg-line" d="M480 178 H640"/>
+          <text class="dg-sub" x="560" y="200" text-anchor="middle" font-size="11">internal</text>
+          <rect class="dg-surface" x="640" y="188" width="170" height="66" rx="12"/>
+          <text class="dg-txt" x="725" y="216" text-anchor="middle" font-size="14">Office computers</text>
+          <text class="dg-sub" x="725" y="235" text-anchor="middle" font-size="11">172.21.0.x</text>
+
+          <!-- Planned VPN to HO -->
+          <path class="dg-dash" d="M390 205 V330"/>
+          <rect class="dg-surface" x="285" y="330" width="210" height="72" rx="12" stroke-dasharray="7 6"/>
+          <text class="dg-txt" x="390" y="360" text-anchor="middle" font-size="15">Head Office</text>
+          <text class="dg-cap" x="390" y="382" text-anchor="middle">VPN — planned</text>
+          <text class="dg-sub" x="470" y="275" text-anchor="start" font-size="11">private link</text>
+        </svg>
+      </div>
+    </div>
+  </section>
+
+  <!-- TIMELINE -->
+  <section>
+    <div class="wrap">
+      <p class="sec-eyebrow">The journey</p>
+      <h2>Done, doing, and planned</h2>
+      <div class="legend">
+        <span class="dot" style="--c:var(--ok)">Done</span>
+        <span class="dot" style="--c:var(--warn)">In progress</span>
+        <span class="dot" style="--c:var(--info)">Planned</span>
+      </div>
+      <div class="phase">
+
+        <div class="phase-card" data-s="done">
+          <div class="phase-head"><h3>Phase 1 — What we finished</h3><span class="pill p-done">Done</span></div>
+          <p>The first branch firewall is fully set up and checked.</p>
+          <ul class="check">
+            <li data-s="done"><span class="ic">✓</span><span><b>Connected and logged in.</b> <span class="d">We reached the firewall and confirmed the admin login works.</span></span></li>
+            <li data-s="done"><span class="ic">✓</span><span><b>Read the device details.</b> <span class="d">Model FortiGate 60F, firmware v7.4.9 — saved to a report.</span></span></li>
+            <li data-s="done"><span class="ic">✓</span><span><b>Created the Wi‑Fi network.</b> <span class="d">A new network on port <span class="mono">internal2</span> at <span class="mono">192.168.1.1</span>.</span></span></li>
+            <li data-s="done"><span class="ic">✓</span><span><b>Turned on automatic addresses (DHCP).</b> <span class="d">Devices get <span class="mono">192.168.1.2–.26</span> — room for 25 devices.</span></span></li>
+            <li data-s="done"><span class="ic">✓</span><span><b>Opened the internet path.</b> <span class="d">Rules let Wi‑Fi and office devices reach the internet on either internet port.</span></span></li>
+            <li data-s="done"><span class="ic">✓</span><span><b>Made the internet port “plug‑and‑play”.</b> <span class="d">Port <span class="mono">wan1</span> is ready; the branch engineer only adds the provider login on‑site.</span></span></li>
+            <li data-s="done"><span class="ic">✓</span><span><b>Saved everything as scripts.</b> <span class="d">All steps stored in a version‑controlled project so nothing is lost.</span></span></li>
+          </ul>
+        </div>
+
+        <div class="phase-card" data-s="doing">
+          <div class="phase-head"><h3>Phase 2 — What we are doing now</h3><span class="pill p-doing">In progress</span></div>
+          <p>Making the setup fast and identical for every future branch.</p>
+          <ul class="check">
+            <li data-s="doing"><span class="ic">●</span><span><b>One‑command branch setup.</b> <span class="d">A single script asks for the Wi‑Fi address and number of devices, then builds the whole branch.</span></span></li>
+            <li data-s="doing"><span class="ic">●</span><span><b>On‑site finish steps.</b> <span class="d">At each branch: type the internet provider login, plug the internet cable, and plug in the Wi‑Fi access point.</span></span></li>
+          </ul>
+        </div>
+
+        <div class="phase-card" data-s="plan">
+          <div class="phase-head"><h3>Phase 3 — What we plan next</h3><span class="pill p-plan">Planned</span></div>
+          <p>Stronger, safer, and easier to manage as more branches join.</p>
+          <ul class="check">
+            <li data-s="plan"><span class="ic">→</span><span><b>Automatic config backup.</b> <span class="d">Save a full copy of each firewall’s settings right after setup, for quick recovery.</span></span></li>
+            <li data-s="plan"><span class="ic">→</span><span><b>Unique addresses per branch.</b> <span class="d">Give every branch its own address range so they never clash over the VPN.</span></span></li>
+            <li data-s="plan"><span class="ic">→</span><span><b>VPN to Head Office.</b> <span class="d">A private, encrypted link so all branches connect to Head Office safely.</span></span></li>
+          </ul>
+        </div>
+
+      </div>
+    </div>
+  </section>
+
+  <!-- WHAT WE SET UP -->
+  <section>
+    <div class="wrap">
+      <p class="sec-eyebrow">The details</p>
+      <h2>What we set up on the firewall</h2>
+      <p class="sec-note">Four simple pieces work together to give the branch safe Wi‑Fi and internet.</p>
+      <div class="cards">
+        <div class="card">
+          <h3>📶 Wi‑Fi network</h3>
+          <p class="sub">A new network for phones and laptops.</p>
+          <div class="kv">
+            <div><span class="lab">Port</span><span class="val">internal2</span></div>
+            <div><span class="lab">Gateway IP</span><span class="val">192.168.1.1</span></div>
+            <div><span class="lab">Network size</span><span class="val">/24</span></div>
+          </div>
+        </div>
+        <div class="card">
+          <h3>🎯 Automatic addresses</h3>
+          <p class="sub">Devices get an address by themselves (DHCP).</p>
+          <div class="kv">
+            <div><span class="lab">Range start</span><span class="val">192.168.1.2</span></div>
+            <div><span class="lab">Range end</span><span class="val">192.168.1.26</span></div>
+            <div><span class="lab">Max devices</span><span class="val">25</span></div>
+          </div>
+        </div>
+        <div class="card">
+          <h3>🌐 Internet path</h3>
+          <p class="sub">Rules that let the branch reach the internet.</p>
+          <div class="kv">
+            <div><span class="lab">Wi‑Fi → wan1</span><span class="val">NAT on</span></div>
+            <div><span class="lab">Wi‑Fi → wan2</span><span class="val">NAT on</span></div>
+            <div><span class="lab">Office → wan2</span><span class="val">NAT on</span></div>
+          </div>
+        </div>
+        <div class="card">
+          <h3>🔌 Plug‑and‑play WAN</h3>
+          <p class="sub">Internet port ready for the branch engineer.</p>
+          <div class="kv">
+            <div><span class="lab">Port</span><span class="val">wan1</span></div>
+            <div><span class="lab">Type</span><span class="val">PPPoE</span></div>
+            <div><span class="lab">Login</span><span class="val">on‑site</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- HOW A NEW BRANCH IS DONE -->
+  <section>
+    <div class="wrap">
+      <p class="sec-eyebrow">The repeatable recipe</p>
+      <h2>Setting up each new branch</h2>
+      <p class="sec-note">The script does the hard work. A person only answers two questions and finishes three simple jobs on‑site.</p>
+      <ol class="steps">
+        <li><b>Connect to the new firewall.</b><p>Plug your computer into the firewall and open the setup script.</p></li>
+        <li><b>Run the script.</b><p>Start <span class="mono">provision-branch.py</span>. It greets you and asks for a couple of details.</p></li>
+        <li><b>Answer two questions.</b><p>Type the branch Wi‑Fi address (for example <span class="mono">192.168.2.1</span>) and how many devices you need. The script works out the rest.</p></li>
+        <li><b>Let it build.</b><p>The script sets the Wi‑Fi, automatic addresses, internet rules, and the plug‑and‑play internet port — all in seconds.</p></li>
+        <li><b>Finish on‑site.</b><p>Enter the internet provider’s username and password, plug in the internet cable, and connect the Wi‑Fi access point. Done.</p></li>
+      </ol>
+      <div class="code">
+        <pre><span class="c"># Simple way — the script asks you the questions</span>
+python scripts\provision-branch.py
+
+<span class="c"># Fast way — give the answers directly</span>
+python scripts\provision-branch.py --wifi-ip 192.168.2.1 --clients 25 --hostname FGT-BranchB --yes</pre>
+      </div>
+    </div>
+  </section>
+
+  <!-- VPN PLAN -->
+  <section>
+    <div class="wrap">
+      <p class="sec-eyebrow">The plan</p>
+      <h2>Connecting branches to Head Office (VPN)</h2>
+      <p class="sec-note">A VPN is a private, locked tunnel over the normal internet. It lets every branch
+        talk to Head Office safely, as if they were in the same building.</p>
+
+      <div class="diagram-wrap" style="margin-bottom:22px">
+        <svg class="diagram" viewBox="0 0 860 340" role="img"
+             aria-label="Hub and spoke VPN: three branches each build a private tunnel to the Head Office hub in the center.">
+          <!-- Hub -->
+          <rect class="dg-hub" x="360" y="130" width="150" height="80" rx="14"/>
+          <text class="dg-txt-w" x="435" y="165" text-anchor="middle" font-size="16">Head Office</text>
+          <text class="dg-txt-w" x="435" y="187" text-anchor="middle" font-size="11" opacity="0.85">the hub · static IP</text>
+
+          <!-- Branch A -->
+          <rect class="dg-surface" x="70" y="40" width="150" height="66" rx="12"/>
+          <text class="dg-txt" x="145" y="68" text-anchor="middle" font-size="14">Branch A</text>
+          <text class="dg-sub" x="145" y="88" text-anchor="middle" font-size="11">10.1.0.0/24</text>
+          <path class="dg-dash" d="M215 90 C300 120 320 140 360 158"/>
+
+          <!-- Branch B -->
+          <rect class="dg-surface" x="70" y="235" width="150" height="66" rx="12"/>
+          <text class="dg-txt" x="145" y="263" text-anchor="middle" font-size="14">Branch B</text>
+          <text class="dg-sub" x="145" y="283" text-anchor="middle" font-size="11">10.2.0.0/24</text>
+          <path class="dg-dash" d="M215 250 C300 220 320 200 360 182"/>
+
+          <!-- Branch C -->
+          <rect class="dg-surface" x="640" y="235" width="150" height="66" rx="12"/>
+          <text class="dg-txt" x="715" y="263" text-anchor="middle" font-size="14">Branch C</text>
+          <text class="dg-sub" x="715" y="283" text-anchor="middle" font-size="11">10.3.0.0/24</text>
+          <path class="dg-dash" d="M640 250 C560 220 540 200 510 182"/>
+
+          <text class="dg-cap" x="435" y="255" text-anchor="middle">Each dotted line = one private VPN tunnel</text>
+        </svg>
+      </div>
+
+      <div class="cards">
+        <div class="card">
+          <h3>🏢 One hub, many branches</h3>
+          <p class="sub">Head Office is the centre. Every branch builds a tunnel to it. This is called “hub‑and‑spoke”.</p>
+        </div>
+        <div class="card">
+          <h3>📞 Branches “dial in”</h3>
+          <p class="sub">Our branches use PPPoE, so their internet address can change. So the branch starts the tunnel, and only Head Office needs a fixed address.</p>
+        </div>
+        <div class="card">
+          <h3>🧭 Unique address per branch</h3>
+          <p class="sub">This is the golden rule. If two branches use the same address range, the VPN gets confused. Each branch must be different.</p>
+        </div>
+      </div>
+
+      <h3 style="margin:28px 0 10px;font-size:1.1rem">Example address plan</h3>
+      <div class="tbl-wrap">
+        <table>
+          <thead><tr><th>Site</th><th>Office / manage</th><th>Wi‑Fi</th></tr></thead>
+          <tbody>
+            <tr><td>Head Office</td><td><span class="mono">10.0.0.0/24</span></td><td>—</td></tr>
+            <tr><td>Branch A</td><td><span class="mono">10.1.0.0/24</span></td><td><span class="mono">10.1.10.0/24</span></td></tr>
+            <tr><td>Branch B</td><td><span class="mono">10.2.0.0/24</span></td><td><span class="mono">10.2.10.0/24</span></td></tr>
+            <tr><td>Branch C</td><td><span class="mono">10.3.0.0/24</span></td><td><span class="mono">10.3.10.0/24</span></td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <!-- GLOSSARY -->
+  <section>
+    <div class="wrap">
+      <p class="sec-eyebrow">Simple words</p>
+      <h2>Plain‑English glossary</h2>
+      <p class="sec-note">Short, easy meanings for the technical words used in this document.</p>
+      <div class="gloss">
+        <dl class="term"><dt>Firewall</dt><dd>The security box that gives a branch internet and Wi‑Fi and blocks unwanted traffic.</dd></dl>
+        <dl class="term"><dt>Interface / Port</dt><dd>A socket on the firewall. Some ports face the internet; some face the office.</dd></dl>
+        <dl class="term"><dt>IP address</dt><dd>A number that names a device on the network, like a house address.</dd></dl>
+        <dl class="term"><dt>Gateway</dt><dd>The “door” address that devices use to leave their network and reach others.</dd></dl>
+        <dl class="term"><dt>Subnet /24</dt><dd>One block of addresses. A “/24” block holds about 254 devices.</dd></dl>
+        <dl class="term"><dt>DHCP</dt><dd>The service that hands out addresses to devices automatically, so no one types them.</dd></dl>
+        <dl class="term"><dt>NAT</dt><dd>A trick that lets many office devices share one internet connection.</dd></dl>
+        <dl class="term"><dt>PPPoE</dt><dd>An internet type that needs a username and password from the provider to connect.</dd></dl>
+        <dl class="term"><dt>WAN</dt><dd>The internet side of the firewall (Wide Area Network).</dd></dl>
+        <dl class="term"><dt>VPN</dt><dd>A private, locked tunnel over the public internet between two sites.</dd></dl>
+        <dl class="term"><dt>Hub‑and‑spoke</dt><dd>One centre (Head Office) with many branches connecting to it.</dd></dl>
+        <dl class="term"><dt>Script</dt><dd>A small program that repeats a set of steps automatically and exactly.</dd></dl>
+      </div>
+    </div>
+  </section>
+
+  <!-- KEY FACTS -->
+  <section>
+    <div class="wrap">
+      <p class="sec-eyebrow">Quick reference</p>
+      <h2>Key facts sheet</h2>
+      <div class="tbl-wrap">
+        <table>
+          <tbody>
+            <tr><th>Device model</th><td><span class="mono">FortiGate 60F</span></td></tr>
+            <tr><th>Firmware</th><td><span class="mono">v7.4.9 (build 2829)</span></td></tr>
+            <tr><th>Manage address</th><td><span class="mono">https://172.21.0.1</span> · admin</td></tr>
+            <tr><th>Wi‑Fi port</th><td><span class="mono">internal2</span> → <span class="mono">192.168.1.1/24</span></td></tr>
+            <tr><th>Wi‑Fi DHCP range</th><td><span class="mono">192.168.1.2 – 192.168.1.26</span> (25 devices)</td></tr>
+            <tr><th>Internet ports</th><td><span class="mono">wan1</span> = PPPoE · <span class="mono">wan2</span> = DHCP</td></tr>
+            <tr><th>Internet rules</th><td>Wi‑Fi → wan1, Wi‑Fi → wan2, Office → wan2 (all NAT on)</td></tr>
+            <tr><th>Main setup script</th><td><span class="mono">scripts\provision-branch.py</span></td></tr>
+            <tr><th>Next big step</th><td>VPN from each branch to Head Office</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+</main>
+
+<footer>
+  <div class="wrap">
+    FortiGate Branch Rollout · internal working document · last updated 15 Aug 2026
+  </div>
+</footer>
