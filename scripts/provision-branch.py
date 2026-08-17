@@ -29,6 +29,19 @@ TWO-PHASE ON A FACTORY DEVICE
   Phase 2 refuses to run if the WiFi subnets still overlap the LAN, and tells
   you to do phase 1 first.
 
+SAVED BRANCHES
+  Settings for a branch can be stored once and re-used by name. The library is
+  the `branches/` folder beside this project (shared with the GUI's "Saved
+  branches" bar), one JSON file per branch, never containing a password.
+
+      python provision-branch.py --list-branches
+      python provision-branch.py --branch "Al Ain" --skip-lan --yes
+      python provision-branch.py --wifi-ip 10.7.10.1 --guest-ip 10.7.20.1 \
+                                 --save-branch "Branch 07"
+
+  --branch supplies the defaults; any flag you also pass wins over the saved
+  value, so a template can be reused with a one-off tweak.
+
 USAGE
   Interactive:      python provision-branch.py
   Non-interactive:  python provision-branch.py --skip-lan --yes \
@@ -37,6 +50,9 @@ USAGE
                         --hostname FGT-BranchB
 
   Options:
+      --branch NAME        load a saved branch's settings as the defaults
+      --save-branch NAME   save these settings to the library under NAME
+      --list-branches      print the saved branches and exit
       --wifi-ip / --clients / --port          Staff WiFi
       --guest-ip / --guest-clients / --guest-port   Guest WiFi ('-' skips guest)
       --start N            first DHCP host number    (default 2)
@@ -58,33 +74,61 @@ import sys
 import argparse
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT))
 
 from fortigate import FortiGate, FortiGateError, load_env      # noqa: E402
-from fortigate import branch, utm                              # noqa: E402
+from fortigate import branch, templates, utm                   # noqa: E402
 
 
 def log(msg):
     print(f"  {msg}")
 
 
-def build_spec(args):
-    guest_on = args.guest_ip not in (None, "", "-")
+def build_spec(args, tmpl=None):
+    """Merge, in increasing priority: built-in default, saved branch, CLI flag."""
+    tmpl = tmpl or {}
+
+    def pick(val, key, default):
+        if val is not None:
+            return val
+        saved = tmpl.get(key)
+        return default if saved in (None, "") else saved
+
+    staff_ip = pick(args.wifi_ip, "staff_ip", "")
+    staff_on = bool(staff_ip) and (args.wifi_ip is not None
+                                   or tmpl.get("configure_staff", True))
+
+    guest_ip = pick(args.guest_ip, "guest_ip", "")
+    guest_on = guest_ip not in ("", "-") and (args.guest_ip is not None
+                                              or tmpl.get("configure_guest", True))
+
+    filters_on = not args.no_filters
     return branch.BranchSpec(
-        hostname=args.hostname or "",
-        lan_port=args.lan_port, lan_ip=args.lan_ip, lan_mask=args.lan_mask,
-        lan_start=args.lan_start, lan_end=args.lan_end,
+        hostname=pick(args.hostname, "hostname", ""),
+        lan_port=pick(args.lan_port, "lan_port", "internal"),
+        lan_ip=pick(args.lan_ip, "lan_ip", "172.21.0.1"),
+        lan_mask=pick(args.lan_mask, "lan_mask", "255.255.248.0"),
+        lan_start=pick(args.lan_start, "lan_start", "172.21.0.100"),
+        lan_end=pick(args.lan_end, "lan_end", "172.21.0.230"),
         configure_lan=not args.skip_lan,
-        staff_port=args.port, staff_ip=args.wifi_ip or "",
-        staff_clients=args.clients if args.clients is not None else 25,
-        staff_first=args.start, configure_staff=bool(args.wifi_ip),
-        guest_port=args.guest_port, guest_ip=args.guest_ip if guest_on else "",
-        guest_clients=args.guest_clients if args.guest_clients is not None else 25,
-        guest_first=args.start, configure_guest=guest_on,
+        staff_port=pick(args.port, "staff_port", "internal2"),
+        staff_ip=staff_ip if staff_on else "",
+        staff_clients=int(pick(args.clients, "staff_clients", 25)),
+        staff_first=int(pick(args.start, "staff_first", 2)),
+        configure_staff=staff_on,
+        guest_port=pick(args.guest_port, "guest_port", "internal3"),
+        guest_ip=guest_ip if guest_on else "",
+        guest_clients=int(pick(args.guest_clients, "guest_clients", 25)),
+        guest_first=int(pick(args.start, "guest_first", 2)),
+        configure_guest=guest_on,
         wan_pppoe=True,
         pppoe_user=args.pppoe_user or "", pppoe_pass=args.pppoe_pass or "",
-        web_filter=not args.no_filters, app_filter=not args.no_filters,
-        ssl_mode=args.ssl,
+        web_filter=filters_on and tmpl.get("web_filter", True),
+        app_filter=filters_on and tmpl.get("app_filter", True),
+        ssl_mode=pick(args.ssl, "ssl_mode", "deep-inspection"),
+        blocked_urls=list(tmpl.get("blocked_urls") or []),
+        blocked_categories=list(tmpl.get("blocked_categories") or []),
     )
 
 
@@ -94,21 +138,27 @@ def main():
     ap.add_argument("--clients", type=int)
     ap.add_argument("--guest-ip")
     ap.add_argument("--guest-clients", type=int)
-    ap.add_argument("--start", type=int, default=2)
+    ap.add_argument("--start", type=int)
     ap.add_argument("--hostname")
-    ap.add_argument("--port", default="internal2")
-    ap.add_argument("--guest-port", default="internal3")
-    ap.add_argument("--lan-port", default="internal")
-    ap.add_argument("--lan-ip", default="172.21.0.1")
-    ap.add_argument("--lan-mask", default="255.255.248.0")
-    ap.add_argument("--lan-start", default="172.21.0.100")
-    ap.add_argument("--lan-end", default="172.21.0.230")
+    ap.add_argument("--port")
+    ap.add_argument("--guest-port")
+    ap.add_argument("--lan-port")
+    ap.add_argument("--lan-ip")
+    ap.add_argument("--lan-mask")
+    ap.add_argument("--lan-start")
+    ap.add_argument("--lan-end")
     ap.add_argument("--lan-only", action="store_true")
     ap.add_argument("--skip-lan", action="store_true")
     ap.add_argument("--no-filters", action="store_true")
-    ap.add_argument("--ssl", default="deep-inspection",
-                    choices=["certificate-inspection", "deep-inspection",
-                             "no-inspection"])
+    ap.add_argument("--ssl", choices=["certificate-inspection", "deep-inspection",
+                                      "no-inspection"])
+    ap.add_argument("--branch", help="use a saved branch's settings as defaults")
+    ap.add_argument("--save-branch", metavar="NAME",
+                    help="save these settings to the branch library as NAME")
+    ap.add_argument("--save-only", action="store_true",
+                    help="with --save-branch: save and exit, touch no device")
+    ap.add_argument("--list-branches", action="store_true",
+                    help="list the saved branches and exit")
     ap.add_argument("--verify", action="store_true")
     ap.add_argument("--host")
     ap.add_argument("--user")
@@ -118,8 +168,26 @@ def main():
     ap.add_argument("--yes", action="store_true")
     args = ap.parse_args()
 
+    # ---- saved branches --------------------------------------------------
+    if args.list_branches:
+        rows = templates.summaries(ROOT)
+        if not rows:
+            print(f"  No saved branches yet in {templates.templates_dir(ROOT)}.")
+            print("  Create one by adding --save-branch \"Name\" to a normal run.")
+            return
+        print(f"  Saved branches ({templates.templates_dir(ROOT)}):")
+        width = max(len(n) for n, _ in rows)
+        for name, detail in rows:
+            print(f"    {name.ljust(width)}   {detail}")
+        return
+
+    tmpl = templates.load(args.branch, ROOT) if args.branch else {}
+    if tmpl:
+        print(f"  Using saved branch '{tmpl.get('branch_name', args.branch)}'"
+              + (f" (saved {tmpl['saved']})" if tmpl.get("saved") else ""))
+
     cfg = load_env()
-    host = args.host or cfg["FGT_HOST"]
+    host = args.host or tmpl.get("host") or cfg["FGT_HOST"]
     user = args.user or cfg["FGT_USER"]
     password = args.password if args.password is not None else cfg["FGT_PASSWORD"]
     if args.pppoe_user is None:
@@ -129,7 +197,7 @@ def main():
 
     # ---- PHASE 1: office LAN only ---------------------------------------
     if args.lan_only:
-        spec = build_spec(args)
+        spec = build_spec(args, tmpl)
         spec.configure_lan = True
         print("=" * 66)
         print("  FortiGate branch provisioner -- PHASE 1 (office LAN only)")
@@ -155,19 +223,18 @@ def main():
         return
 
     # ---- gather per-branch values ---------------------------------------
-    if not args.wifi_ip:
+    # A saved branch already answers these, so only ask for what is missing.
+    if not args.wifi_ip and not tmpl.get("staff_ip"):
         args.wifi_ip = input("  Staff WiFi gateway IP (e.g. 192.168.1.1): ").strip()
-    if args.clients is None:
+    if args.clients is None and not tmpl:
         args.clients = int(input("  Number of Staff WiFi clients [25]: ").strip() or 25)
-    if args.guest_ip is None and not args.yes:
+    if args.guest_ip is None and not tmpl and not args.yes:
         args.guest_ip = input(
             "  Guest WiFi gateway IP (e.g. 192.168.2.1, '-' to skip): ").strip() or "-"
-    if args.guest_clients is None:
-        args.guest_clients = 25
-    if args.hostname is None and not args.yes:
+    if args.hostname is None and not tmpl and not args.yes:
         args.hostname = input("  Device hostname (optional): ").strip() or None
 
-    spec = build_spec(args)
+    spec = build_spec(args, tmpl)
     spec.configure_lan = False          # applied only via --lan-only
 
     errs = branch.validate(spec)
@@ -176,6 +243,20 @@ def main():
         for e in errs:
             print(f"    - {e}")
         raise SystemExit(1)
+
+    # Saved before touching the device: the settings are valid, and if the
+    # apply fails half way the branch can be re-run by name.
+    if args.save_branch:
+        p = templates.save(args.save_branch, spec, ROOT, host=host)
+        print(f"  Saved branch '{args.save_branch}' -> {p}")
+        print("  (no passwords are stored in it)")
+        if args.save_only:
+            print(f"  --save-only: nothing was sent to a device. Provision it with:")
+            print(f"      python provision-branch.py --branch \"{args.save_branch}\" "
+                  f"--skip-lan --yes")
+            return
+    elif args.save_only:
+        raise SystemExit("[!] --save-only needs --save-branch NAME.")
 
     # ---- confirm ---------------------------------------------------------
     print("=" * 66)
@@ -264,5 +345,5 @@ def main():
 if __name__ == "__main__":
     try:
         main()
-    except FortiGateError as e:
+    except (FortiGateError, templates.TemplateError) as e:
         raise SystemExit(f"[!] {e}")

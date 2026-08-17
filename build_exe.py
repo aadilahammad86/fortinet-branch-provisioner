@@ -62,6 +62,7 @@ def main():
         "--hidden-import", "fortigate.client",
         "--hidden-import", "fortigate.branch",
         "--hidden-import", "fortigate.utm",
+        "--hidden-import", "fortigate.templates",
         # docs are opened by the "User guide" button
         "--add-data", f"{ROOT / 'docs' / 'gui-user-guide.md'};docs",
         # nothing here needs these; excluding them keeps the build small

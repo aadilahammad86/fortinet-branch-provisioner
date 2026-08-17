@@ -18,7 +18,6 @@ Design notes:
 Run from source:   python branch_gui.py
 Build the exe:     python build_exe.py
 """
-import json
 import queue
 import sys
 import threading
@@ -27,13 +26,14 @@ import webbrowser
 from pathlib import Path
 
 import tkinter as tk
-from tkinter import ttk, filedialog, messagebox, scrolledtext
+from tkinter import ttk, filedialog, messagebox, scrolledtext, simpledialog
 
 from fortigate import FortiGate, LoginError, FortiGateError, load_env
-from fortigate import branch, utm
+from fortigate import branch, templates, utm
+from fortigate.templates import TemplateError
 
 APP_TITLE = "FortiGate Branch Provisioner"
-APP_VERSION = "1.0"
+APP_VERSION = "1.1"
 
 
 def app_dir():
@@ -226,6 +226,10 @@ class App(tk.Tk):
         outer = ttk.Frame(self, padding=10)
         outer.pack(fill="both", expand=True)
 
+        # Saved branches live above the tabs, not inside one: picking a branch
+        # refills fields on every tab, so it must be reachable from all of them.
+        self._branch_bar(outer)
+
         # Status bar first, anchored to the bottom, so it stays visible no
         # matter where the operator drags the divider.
         bar = ttk.Frame(outer)
@@ -289,6 +293,56 @@ class App(tk.Tk):
                 self.paned.sashpos(0, int(total * 0.79))
         except tk.TclError:
             pass
+
+    # ---- saved-branch bar ------------------------------------------------
+    def _branch_bar(self, parent):
+        """Pick a saved branch and the whole form fills in from it."""
+        bar = ttk.LabelFrame(parent, text="Saved branches", padding=8)
+        bar.pack(fill="x", pady=(0, 8))
+
+        ttk.Label(bar, text="Branch:").pack(side="left")
+        self.v_branch = tk.StringVar()
+        self.branch_box = ttk.Combobox(bar, textvariable=self.v_branch, width=30,
+                                       state="readonly", values=[])
+        self.branch_box.pack(side="left", padx=(6, 8))
+        self.branch_box.bind("<<ComboboxSelected>>", lambda _e: self.act_branch_load())
+        Tooltip(self.branch_box,
+                "Every branch you have saved. Choosing one fills in every "
+                "setting on every tab.\nPasswords are never saved — re-type them "
+                "on the Connect tab.")
+
+        for text, cmd, width, tip in (
+            ("Save as new…", self.act_branch_save_as, 14,
+             "Save the settings on the tabs as a new branch you can pick again later."),
+            ("Update", self.act_branch_update, 9,
+             "Overwrite the selected branch with what is on the tabs now."),
+            ("Delete", self.act_branch_delete, 9,
+             "Remove the selected branch from the list. The device is not touched."),
+        ):
+            b = ttk.Button(bar, text=text, command=cmd, width=width)
+            b.pack(side="left", padx=(0, 6))
+            Tooltip(b, tip)
+
+        self.branch_hint = ttk.Label(bar, text="", foreground="#666")
+        self.branch_hint.pack(side="left", padx=(8, 0))
+        ttk.Button(bar, text="Folder", width=8,
+                   command=self.act_branch_folder).pack(side="right")
+        self._refresh_branch_list()
+
+    def _refresh_branch_list(self, select=None):
+        try:
+            names = templates.list_names(ROOT)
+        except TemplateError as e:
+            self._write_log(f"[!] {e}", "fail")
+            names = []
+        self.branch_box.configure(values=names)
+        if select is not None:
+            self.v_branch.set(select)
+        elif self.v_branch.get() not in names:
+            self.v_branch.set("")
+        self.branch_hint.configure(
+            text=(f"{len(names)} saved" if names
+                  else "none saved yet — set up a branch, then 'Save as new…'"))
 
     # ---- tab 1: connect -------------------------------------------------
     def _page(self, label):
@@ -561,13 +615,18 @@ class App(tk.Tk):
 
         prof = ttk.Frame(f)
         prof.pack(fill="x", pady=(18, 0))
-        ttk.Label(prof, text="Branch profile:").pack(side="left")
-        ttk.Button(prof, text="Save…", command=self.act_save_profile,
-                   width=10).pack(side="left", padx=6)
-        ttk.Button(prof, text="Load…", command=self.act_load_profile,
-                   width=10).pack(side="left")
+        ttk.Label(prof, text="Branch settings file:").pack(side="left")
+        b = ttk.Button(prof, text="Export…", command=self.act_branch_export, width=10)
+        b.pack(side="left", padx=6)
+        Tooltip(b, "Write the selected saved branch to a file you can send to "
+                   "another engineer.")
+        b = ttk.Button(prof, text="Import…", command=self.act_branch_import, width=10)
+        b.pack(side="left")
+        Tooltip(b, "Add a branch settings file someone sent you to the saved "
+                   "branch list at the top.")
         ttk.Label(prof, foreground="#666",
-                  text="  (saves every setting except passwords)").pack(side="left")
+                  text="  (day-to-day, use the Saved branches bar at the top)"
+                  ).pack(side="left")
         ttk.Button(prof, text="User guide", width=12,
                    command=self._open_docs).pack(side="right")
 
@@ -965,39 +1024,119 @@ class App(tk.Tk):
         self._run("Change office LAN", job)
         self.f_host.set(spec.lan_ip)
 
-    # ---- profiles -------------------------------------------------------
-    def act_save_profile(self):
-        path = filedialog.asksaveasfilename(
-            title="Save branch profile", defaultextension=".json",
-            filetypes=[("Branch profile", "*.json")],
-            initialfile=(self.f_hostname.get() or "branch") + ".json")
-        if not path:
-            return
-        spec = self.spec_from_form()
-        data = {k: v for k, v in vars(spec).items()
-                if k not in ("pppoe_pass",)}
-        data["host"] = self.f_host.get()
-        data["backup_dir"] = self.v_backup_dir.get()
+    # ---- saved branches --------------------------------------------------
+    def _save_branch(self, name):
+        """Write the form to the library under `name`. True if it was saved."""
         try:
-            Path(path).write_text(json.dumps(data, indent=2), encoding="utf-8")
-        except OSError as e:
-            messagebox.showerror(APP_TITLE, f"Could not save:\n{e}")
-            return
-        self._write_log(f"[ok] profile saved: {path}", "ok")
+            templates.save(name, self.spec_from_form(), ROOT,
+                           host=self.f_host.get(),
+                           backup_dir=self.v_backup_dir.get())
+        except TemplateError as e:
+            messagebox.showerror(APP_TITLE, str(e))
+            return False
+        self._refresh_branch_list(select=name)
+        self._write_log(f"[ok] branch saved: {name}"
+                        f"   (passwords are never saved)", "ok")
+        return True
 
-    def act_load_profile(self):
-        path = filedialog.askopenfilename(
-            title="Load branch profile", filetypes=[("Branch profile", "*.json")])
-        if not path:
+    def act_branch_save_as(self):
+        name = simpledialog.askstring(
+            APP_TITLE, "Name for this branch\n(e.g. 'Al Ain' or 'Branch 07'):",
+            initialvalue=self.v_branch.get() or self.f_hostname.get(), parent=self)
+        if not name or not name.strip():
+            return
+        name = name.strip()
+        if templates.exists(name, ROOT) and not messagebox.askokcancel(
+                APP_TITLE, f"'{name}' is already saved. Overwrite it?"):
+            return
+        self._save_branch(name)
+
+    def act_branch_update(self):
+        name = self.v_branch.get()
+        if not name:
+            messagebox.showinfo(APP_TITLE,
+                                "Pick a branch from the list first, or use "
+                                "'Save as new…'.")
+            return
+        if messagebox.askokcancel(
+                APP_TITLE, f"Overwrite the saved settings for '{name}' with "
+                           f"what is on the tabs now?"):
+            self._save_branch(name)
+
+    def act_branch_load(self):
+        name = self.v_branch.get()
+        if not name:
             return
         try:
-            data = json.loads(Path(path).read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError) as e:
-            messagebox.showerror(APP_TITLE, f"Could not load:\n{e}")
+            data = templates.load(name, ROOT)
+        except TemplateError as e:
+            messagebox.showerror(APP_TITLE, str(e))
+            self._refresh_branch_list()
             return
         self.form_from_spec(data)
-        self._write_log(f"[ok] profile loaded: {path}  "
-                        f"(passwords are never stored — re-enter them)", "ok")
+        self._write_log(f"[ok] branch loaded: {name}"
+                        + (f"   (saved {data['saved']})" if data.get("saved") else "")
+                        + "   — passwords are not stored, re-enter them", "ok")
+
+    def act_branch_delete(self):
+        name = self.v_branch.get()
+        if not name:
+            messagebox.showinfo(APP_TITLE, "Pick a branch from the list first.")
+            return
+        if not messagebox.askokcancel(
+                APP_TITLE, f"Remove '{name}' from the saved branch list?\n\n"
+                           f"This only deletes the saved settings file. Nothing "
+                           f"on the FortiGate changes."):
+            return
+        try:
+            templates.delete(name, ROOT)
+        except TemplateError as e:
+            messagebox.showerror(APP_TITLE, str(e))
+        else:
+            self._write_log(f"[ok] branch deleted: {name}", "ok")
+        self.v_branch.set("")
+        self._refresh_branch_list()
+
+    def act_branch_folder(self):
+        try:
+            webbrowser.open(templates.templates_dir(ROOT).as_uri())
+        except TemplateError as e:
+            messagebox.showerror(APP_TITLE, str(e))
+
+    # ---- send a branch to another machine --------------------------------
+    def act_branch_export(self):
+        name = self.v_branch.get()
+        if not name:
+            messagebox.showinfo(APP_TITLE,
+                                "Pick a saved branch from the list at the top first.")
+            return
+        path = filedialog.asksaveasfilename(
+            title="Export branch settings", defaultextension=".json",
+            filetypes=[("Branch settings", "*.json")],
+            initialfile=templates.slug(name) + ".branch.json")
+        if not path:
+            return
+        try:
+            templates.export_file(name, path, ROOT)
+        except TemplateError as e:
+            messagebox.showerror(APP_TITLE, str(e))
+            return
+        self._write_log(f"[ok] exported '{name}' to {path}", "ok")
+
+    def act_branch_import(self):
+        path = filedialog.askopenfilename(
+            title="Import branch settings",
+            filetypes=[("Branch settings", "*.json"), ("All files", "*.*")])
+        if not path:
+            return
+        try:
+            name = templates.import_file(path, ROOT)
+        except TemplateError as e:
+            messagebox.showerror(APP_TITLE, str(e))
+            return
+        self._refresh_branch_list(select=name)
+        self.act_branch_load()
+        self._write_log(f"[ok] imported branch '{name}' from {path}", "ok")
 
 
 def main():

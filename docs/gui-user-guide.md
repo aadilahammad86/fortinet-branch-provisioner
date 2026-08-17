@@ -101,8 +101,8 @@ If the folder cannot be written to — a share you are not signed in to, a
 read-only stick — the program says so straight away rather than failing
 mid-download.
 
-The folder is remembered in a saved branch profile, so a per-branch folder only
-has to be chosen once.
+The folder is remembered in the saved branch (see **Saved branches**), so a
+per-branch folder only has to be chosen once.
 
 ---
 
@@ -221,10 +221,61 @@ a problem.
 **Always Preview before Apply.** It is the difference between "I think this is
 right" and "I know what is about to happen."
 
-### Branch profiles
+### Sending a branch to someone else
 
-**Save…** writes every setting to a small file so the next branch is a
-**Load…** away. Passwords are never saved — you re-type those each time.
+**Export…** writes the branch selected at the top to a file you can email.
+**Import…** adds a file someone sent you to your own branch list.
+
+Day to day you do not need either — use the **Saved branches** bar at the top
+of the window (next section).
+
+---
+
+## Saved branches
+
+The bar across the top of the window is your list of branches. Set a branch up
+once, save it under a name, and from then on you pick the name and every box on
+every tab fills in by itself.
+
+| Button | What it does |
+|---|---|
+| **Branch** (the drop-down) | Pick a branch. The whole form fills in immediately. |
+| **Save as new…** | Asks for a name and saves what is on the tabs right now. |
+| **Update** | Overwrites the branch currently picked with what is on the tabs. |
+| **Delete** | Removes it from the list. **Nothing on the firewall changes.** |
+| **Folder** | Opens the `branches` folder, in case you want to back it up. |
+
+### The normal routine
+
+**First time at a new branch**
+
+1. Fill in the tabs as usual — office LAN, Staff WiFi, Guest WiFi, filtering
+2. Press **Check settings**, then **Preview changes**
+3. Press **Save as new…** and give it the branch name, e.g. `Al Ain` or
+   `Branch 07`
+4. Apply as normal
+
+**Every time after that — same branch, or a replacement unit**
+
+1. Pick the branch from the drop-down. Everything fills in.
+2. Type the firewall password on the **Connect** tab and press
+   **Test connection**
+3. **Preview changes**, then **APPLY CONFIGURATION**, then **Verify**
+
+That is the whole job: pick the name, type the password, apply.
+
+### Things worth knowing
+
+- **Passwords are never saved.** Not the firewall admin password, not the ISP
+  PPPoE password. You re-type them each time — deliberately, because these
+  files get copied onto other laptops and emailed.
+- Saved branches live in a **`branches` folder next to the program**. Copy that
+  folder to another laptop and that laptop has all your branches.
+- Every branch **must use different network addresses** once the head-office
+  VPN is in place. Do not save one branch and re-use it unchanged for another —
+  change the addresses first, then **Save as new…** under the new name.
+- Changing a setting after picking a branch does **not** alter the saved copy.
+  Press **Update** if you want to keep the change.
 
 ---
 

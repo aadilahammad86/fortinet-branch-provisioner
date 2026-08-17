@@ -39,6 +39,7 @@ fortigate/
   client.py     login / CSRF / REST plumbing, config backup
   branch.py     interfaces, DHCP, policies, wan1, LAN, validation, verification
   utm.py        web filter + application control
+  templates.py  saved-branch library (one JSON file per branch, no passwords)
 branch_gui.py   the GUI
 build_exe.py    builds the .exe with PyInstaller
 scripts/*.py    thin CLI wrappers over the package
@@ -66,9 +67,34 @@ instead. Both builds are unsigned, so Windows SmartScreen prompts on first run.
 Config backups are written to a `configs` folder beside the running .exe.
 
 Five tabs — Connect, Networks, Internet, Filtering, Apply — with local
-validation, a dry-run **Preview**, one-click **Verify**, config backup, and
-saveable branch profiles. Full instructions for a non-technical operator:
+validation, a dry-run **Preview**, one-click **Verify**, config backup, and a
+**Saved branches** bar. Full instructions for a non-technical operator:
 **`docs/gui-user-guide.md`**.
+
+### Saved branches (templates)
+
+Each branch's settings are stored under a name and re-used: pick the branch
+from the drop-down at the top of the window and every field on every tab fills
+in. **Save as new…** creates one, **Update** overwrites it, **Export…/Import…**
+move one between laptops.
+
+Templates are one JSON file per branch in a `branches/` folder beside the
+program (or the repo root when running from source), managed by
+`fortigate/templates.py` and shared with the CLI. **No password of any kind is
+written to them** — the admin password and the ISP PPPoE password are always
+re-typed. The folder is git-ignored: it names real sites and subnets.
+
+The same library from the command line:
+
+```
+python scripts/provision-branch.py --list-branches
+python scripts/provision-branch.py --branch "Al Ain" --skip-lan --yes --verify
+python scripts/provision-branch.py --wifi-ip 10.7.10.1 --guest-ip 10.7.20.1 \
+                                   --hostname FGT-Branch07 --save-branch "Branch 07"
+```
+
+`--branch` provides the defaults; any flag given alongside it wins, so a saved
+branch can be reused with a one-off change.
 
 The build is unsigned, so Windows SmartScreen prompts on first run
 (*More info → Run anyway*). Distribute by zipping the `dist/FortiGate Branch

@@ -59,6 +59,7 @@ script or to the GUI, add it to the package.
 | `fortigate/client.py` | `FortiGate` class: login, CSRF, `call/get/results/upsert`, `status()`, `backup()`. The one copy of the connection code that used to be duplicated in all 9 scripts. |
 | `fortigate/branch.py` | `BranchSpec` dataclass, `validate()`, `compute_range()`, interface/DHCP/policy/wan1/LAN functions, `provision()`, `preview()` (dry run), `verify()`. |
 | `fortigate/utm.py` | Blocked-URL list, category IDs, `apply_filters()`, `clear_filters()`, `verify_filters()`, `licence_state()`. |
+| `fortigate/templates.py` | Saved-branch library: one JSON file per branch in `branches/` (beside the .exe, git-ignored). `save/load/load_spec/delete/list_names/summaries/export_file/import_file`. Strips `pppoe_pass` and every other secret; ignores unknown keys on load so old files still work. |
 | `branch_gui.py` | Tkinter GUI. Worker thread + queue; never call the device on the UI thread. |
 | `build_exe.py` | PyInstaller build. `--onedir` by default (fewer AV false positives). |
 
@@ -69,7 +70,7 @@ form, the CLI flags, saved profiles, `preview()` and `verify()` all speak it.
 
 | Script | Purpose |
 |--------|---------|
-| `provision-branch.py` | **Main entry.** Provisions a whole branch. Prompts for Staff + Guest WiFi gateway IPs and client counts (or `--wifi-ip`/`--clients`/`--guest-ip`/`--guest-clients`/`--yes`). Applies both interfaces, DHCP, the three wan1 NAT policies, wan1 PPPoE. Idempotent. Pass `--guest-ip -` to skip guest. |
+| `provision-branch.py` | **Main entry.** `--branch NAME` loads a saved branch as the defaults (CLI flags still win), `--save-branch NAME` stores one, `--list-branches` lists them. Provisions a whole branch. Prompts for Staff + Guest WiFi gateway IPs and client counts (or `--wifi-ip`/`--clients`/`--guest-ip`/`--guest-clients`/`--yes`). Applies both interfaces, DHCP, the three wan1 NAT policies, wan1 PPPoE. Idempotent. Pass `--guest-ip -` to skip guest. |
 | `backup-config.py` | Downloads a full config backup to `configs/` (git-ignored; holds secrets). Run before any reset/big change. |
 | `pull-device-info.py` | Writes `docs/device-info.md` (model, firmware, interfaces, load). |
 | `check-connection.ps1` | Reachability + login test. |
@@ -170,6 +171,9 @@ branch); branches dial in. See the VPN plan page below.
    pattern `10.<branch>.0.x` = LAN, `.10.x` = Staff, `.20.x` = Guest;
    HO `10.0.0.0/24`. The staged unit currently uses 172.21.0.0/21 +
    192.168.1.0/24 + 192.168.2.0/24, which will collide across branches.
+   Saved branches (`branches/`) are how this is kept straight — one template per
+   site, each with its own addresses. Never re-use a template for a second
+   branch unchanged; change the addresses, then "Save as new…".
 2. **Rotate the admin password** per unit (see Cautions).
 3. **Register the unit with FortiGuard** once it has an uplink, so application
    control signatures update (see Licensing state).
@@ -201,6 +205,11 @@ until then — it fails silently without live rating lookups.
   the CLI's `--ssl` default, or the two front ends disagree.
 - Device calls run on a worker thread and report back through a `queue`. Calling
   the device on the UI thread freezes the window and Windows greys it out.
+- **Saved branches bar** sits above the notebook, not inside a tab — picking a
+  branch refills fields on every tab, so it must be reachable from all of them.
+  Selecting from the combobox loads immediately (`act_branch_load`). Everything
+  it does goes through `fortigate.templates`; never write template JSON from the
+  GUI directly, or the CLI and GUI libraries drift apart.
 - **Frozen-path rule:** operator files (backups, profiles, `.env`) resolve via
   `app_dir()` = the folder holding the `.exe`; bundled read-only resources via
   `bundled()` = `sys._MEIPASS`. Never use `Path(__file__).parent` for a file the

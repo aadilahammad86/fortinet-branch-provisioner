@@ -17,7 +17,9 @@ build/
 dist/
 *.spec
 
-# Branch profiles may name real sites/subnets
+# Saved branch templates name real sites and subnets -- share them with the
+# GUI's Export…/Import… buttons, not through the repo.
+branches/
 profiles/
 
 # OS
