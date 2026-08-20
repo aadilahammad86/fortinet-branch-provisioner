@@ -1,0 +1,730 @@
+<title>Branch Tunnel Blueprint</title>
+<style>
+  /* ---- tokens: light is the base, both dark states redefine only these ---- */
+  :root {
+    --ground:   #EDF0EE;
+    --surface:  #FFFFFF;
+    --sunken:   #E3E8E5;
+    --ink:      #101a16;
+    --body:     #2C3A34;
+    --muted:    #5F6E67;
+    --rule:     #D2D9D5;
+    --rule-soft:#E1E6E3;
+    --accent:   #0C6B4C;
+    --accent-2: #075640;
+    --accent-wash: #DDEBE4;
+    --warn:     #9A6300;
+    --warn-wash:#F5E9D2;
+    --danger:   #A8382C;
+    --danger-wash:#F4DEDA;
+    --code-bg:  #14211C;
+    --code-ink: #D8E6DF;
+    --code-key: #7FD3AC;
+    --code-dim: #7F978C;
+    --shadow:   0 1px 2px rgba(16,26,22,.06), 0 8px 24px -18px rgba(16,26,22,.5);
+    --mono: ui-monospace, "Cascadia Mono", "Cascadia Code", Consolas, "SF Mono", Menlo, monospace;
+    --sans: "Segoe UI", system-ui, -apple-system, "Helvetica Neue", Arial, sans-serif;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --ground:   #0D1311;
+      --surface:  #141C19;
+      --sunken:   #1A2320;
+      --ink:      #E7EDEA;
+      --body:     #C3CFC9;
+      --muted:    #8B9C94;
+      --rule:     #26332E;
+      --rule-soft:#1F2A26;
+      --accent:   #4FCE9F;
+      --accent-2: #7BE0BB;
+      --accent-wash: #143126;
+      --warn:     #E0A64A;
+      --warn-wash:#332818;
+      --danger:   #E8877A;
+      --danger-wash:#33201C;
+      --code-bg:  #0A100E;
+      --code-ink: #CFDDD6;
+      --code-key: #6FCFA6;
+      --code-dim: #6E827A;
+      --shadow:   0 1px 2px rgba(0,0,0,.4), 0 10px 30px -20px rgba(0,0,0,.9);
+    }
+  }
+  :root[data-theme="dark"] {
+    --ground:   #0D1311;
+    --surface:  #141C19;
+    --sunken:   #1A2320;
+    --ink:      #E7EDEA;
+    --body:     #C3CFC9;
+    --muted:    #8B9C94;
+    --rule:     #26332E;
+    --rule-soft:#1F2A26;
+    --accent:   #4FCE9F;
+    --accent-2: #7BE0BB;
+    --accent-wash: #143126;
+    --warn:     #E0A64A;
+    --warn-wash:#332818;
+    --danger:   #E8877A;
+    --danger-wash:#33201C;
+    --code-bg:  #0A100E;
+    --code-ink: #CFDDD6;
+    --code-key: #6FCFA6;
+    --code-dim: #6E827A;
+    --shadow:   0 1px 2px rgba(0,0,0,.4), 0 10px 30px -20px rgba(0,0,0,.9);
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--ground);
+    color: var(--body);
+    font-family: var(--sans);
+    font-size: 16px;
+    line-height: 1.62;
+    -webkit-font-smoothing: antialiased;
+  }
+  .wrap { max-width: 1160px; margin: 0 auto; padding: 0 24px 96px; }
+
+  /* ---- masthead ---- */
+  .mast { padding: 56px 0 28px; border-bottom: 1px solid var(--rule); }
+  .eyebrow {
+    font-family: var(--mono); font-size: .72rem; letter-spacing: .16em;
+    text-transform: uppercase; color: var(--accent); margin: 0 0 18px;
+  }
+  h1 {
+    font-family: var(--mono); font-weight: 600;
+    font-size: clamp(2.1rem, 5vw, 3.1rem); line-height: 1.05;
+    letter-spacing: -.025em; color: var(--ink);
+    margin: 0 0 18px; text-wrap: balance;
+  }
+  .stand { font-size: 1.09rem; max-width: 64ch; color: var(--body); margin: 0 0 26px; }
+  .stand strong { color: var(--ink); font-weight: 600; }
+  .facts { display: flex; flex-wrap: wrap; gap: 10px 28px; font-family: var(--mono); font-size: .78rem; }
+  .facts div { display: flex; gap: 8px; align-items: baseline; }
+  .facts dt, .facts .k { color: var(--muted); text-transform: uppercase; letter-spacing: .1em; }
+  .facts .v { color: var(--ink); }
+
+  /* ---- layout ---- */
+  .cols { display: grid; grid-template-columns: 1fr; gap: 40px; padding-top: 40px; }
+  @media (min-width: 1000px) { .cols { grid-template-columns: 210px minmax(0,1fr); gap: 56px; } }
+  nav.toc { display: none; }
+  @media (min-width: 1000px) {
+    nav.toc { display: block; position: sticky; top: 28px; align-self: start; }
+  }
+  nav.toc ol { list-style: none; margin: 0; padding: 0; counter-reset: t; }
+  nav.toc li { counter-increment: t; margin: 0 0 3px; }
+  nav.toc a {
+    display: grid; grid-template-columns: 22px 1fr; gap: 8px;
+    font-family: var(--mono); font-size: .76rem; line-height: 1.4;
+    color: var(--muted); text-decoration: none; padding: 5px 6px; border-radius: 3px;
+  }
+  nav.toc a::before { content: counter(t, decimal-leading-zero); color: var(--accent); opacity: .7; }
+  nav.toc a:hover { color: var(--ink); background: var(--sunken); }
+  nav.toc a:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+  main { min-width: 0; display: flex; flex-direction: column; gap: 52px; }
+  section { scroll-margin-top: 20px; }
+  .sec-head { display: flex; align-items: baseline; gap: 14px; border-top: 2px solid var(--ink); padding-top: 12px; margin-bottom: 18px; }
+  .sec-num { font-family: var(--mono); font-size: .8rem; color: var(--accent); letter-spacing: .08em; }
+  h2 { font-family: var(--mono); font-size: 1.3rem; font-weight: 600; letter-spacing: -.01em; color: var(--ink); margin: 0; text-wrap: balance; }
+  h3 { font-size: 1rem; font-weight: 650; color: var(--ink); margin: 30px 0 10px; }
+  h4 { font-family: var(--mono); font-size: .78rem; text-transform: uppercase; letter-spacing: .12em; color: var(--muted); margin: 24px 0 8px; }
+  p { margin: 0 0 14px; max-width: 70ch; }
+  ul, ol { margin: 0 0 14px; padding-left: 20px; max-width: 70ch; }
+  li { margin: 0 0 7px; }
+  strong { color: var(--ink); font-weight: 640; }
+  code {
+    font-family: var(--mono); font-size: .875em;
+    background: var(--sunken); color: var(--ink);
+    padding: .1em .34em; border-radius: 3px;
+  }
+  a { color: var(--accent); text-underline-offset: 2px; }
+
+  /* ---- blocks ---- */
+  .card { background: var(--surface); border: 1px solid var(--rule); border-radius: 6px; padding: 20px 22px; box-shadow: var(--shadow); }
+  .card + .card { margin-top: 14px; }
+  .grid2 { display: grid; grid-template-columns: 1fr; gap: 14px; }
+  @media (min-width: 760px) { .grid2 { grid-template-columns: 1fr 1fr; } }
+
+  pre {
+    margin: 0 0 16px; padding: 16px 18px; overflow-x: auto;
+    background: var(--code-bg); color: var(--code-ink);
+    border-radius: 6px; font-family: var(--mono); font-size: .83rem; line-height: 1.6;
+    border: 1px solid var(--rule);
+  }
+  pre .c { color: var(--code-dim); }
+  pre .k { color: var(--code-key); }
+  pre b { color: #F2C179; font-weight: 500; }
+  .endpoint {
+    display: inline-block; font-family: var(--mono); font-size: .74rem;
+    letter-spacing: .04em; color: var(--accent); background: var(--accent-wash);
+    border: 1px solid var(--rule); border-radius: 3px; padding: 3px 8px; margin: 0 0 8px;
+  }
+  .mock {
+    background: var(--sunken); color: var(--ink); border: 1px dashed var(--rule);
+    font-size: .8rem; line-height: 1.75;
+  }
+  .mock b { color: var(--accent); font-weight: 600; }
+  .mock i { color: var(--muted); font-style: normal; }
+
+  table { width: 100%; border-collapse: collapse; font-size: .9rem; font-variant-numeric: tabular-nums; }
+  .scroll { overflow-x: auto; margin: 0 0 16px; }
+  th, td { text-align: left; padding: 9px 12px; border-bottom: 1px solid var(--rule-soft); vertical-align: top; }
+  th { font-family: var(--mono); font-size: .72rem; text-transform: uppercase; letter-spacing: .1em; color: var(--muted); border-bottom: 1px solid var(--rule); white-space: nowrap; }
+  td code { background: none; padding: 0; color: var(--accent); }
+
+  .chip {
+    display: inline-block; font-family: var(--mono); font-size: .68rem;
+    text-transform: uppercase; letter-spacing: .1em; padding: 2px 7px;
+    border-radius: 3px; border: 1px solid currentColor; white-space: nowrap;
+  }
+  .chip.hi { color: var(--danger); background: var(--danger-wash); }
+  .chip.md { color: var(--warn); background: var(--warn-wash); }
+  .chip.lo { color: var(--accent); background: var(--accent-wash); }
+
+  .note {
+    border-left: 3px solid var(--accent); background: var(--accent-wash);
+    padding: 14px 18px; border-radius: 0 5px 5px 0; margin: 0 0 16px;
+  }
+  .note.warn { border-left-color: var(--warn); background: var(--warn-wash); }
+  .note.stop { border-left-color: var(--danger); background: var(--danger-wash); }
+  .note p:last-child { margin-bottom: 0; }
+  .note .lbl { font-family: var(--mono); font-size: .7rem; text-transform: uppercase; letter-spacing: .12em; display: block; margin-bottom: 6px; color: var(--ink); }
+
+  /* ---- name rule figure ---- */
+  .namefig { display: flex; flex-wrap: wrap; align-items: stretch; gap: 0; font-family: var(--mono); margin: 6px 0 18px; }
+  .namefig span { display: flex; flex-direction: column; justify-content: center; padding: 12px 16px; border: 1px solid var(--rule); }
+  .namefig .a { background: var(--accent-wash); color: var(--accent); border-radius: 5px 0 0 5px; font-weight: 600; }
+  .namefig .b { background: var(--sunken); color: var(--ink); }
+  .namefig .c2 { background: var(--surface); color: var(--muted); border-radius: 0 5px 5px 0; font-size: .8rem; }
+  .namefig em { font-style: normal; font-size: .68rem; text-transform: uppercase; letter-spacing: .1em; color: var(--muted); display: block; }
+
+  figure { margin: 0 0 18px; }
+  figcaption { font-family: var(--mono); font-size: .74rem; color: var(--muted); margin-top: 8px; }
+  svg { display: block; width: 100%; height: auto; }
+  .s-box { fill: var(--surface); stroke: var(--rule); }
+  .s-ink { fill: var(--ink); }
+  .s-mut { fill: var(--muted); }
+  .s-acc { fill: var(--accent); }
+  .s-line { stroke: var(--accent); fill: none; }
+  .s-dash { stroke: var(--muted); fill: none; stroke-dasharray: 5 4; }
+  .s-cloud { fill: var(--sunken); stroke: var(--rule); }
+
+  .q { border: 1px solid var(--rule); border-radius: 6px; background: var(--surface); padding: 16px 18px; margin: 0 0 12px; }
+  .q h4 { margin: 0 0 6px; color: var(--ink); }
+  .q p { margin: 0; font-size: .94rem; }
+  .q .rec { color: var(--accent); font-weight: 600; }
+
+  footer { margin-top: 60px; padding-top: 20px; border-top: 1px solid var(--rule); font-family: var(--mono); font-size: .76rem; color: var(--muted); }
+  @media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
+</style>
+
+<div class="wrap">
+
+  <header class="mast">
+    <p class="eyebrow">Implementation plan · FortiGate Branch Provisioner</p>
+    <h1>Branch Tunnel Blueprint</h1>
+    <p class="stand">Two new tabs — <strong>Dynamic DNS</strong> and <strong>VPN Tunnel</strong> — that give each branch a findable name on the internet and an IPsec tunnel home to HO. Each tab carries <strong>its own branch name</strong>, set independently: the DNS name and the tunnel name are not tied together.</p>
+    <div class="facts">
+      <div><span class="k">Date</span><span class="v">17 Aug 2026</span></div>
+      <div><span class="k">Target</span><span class="v">v1.2</span></div>
+      <div><span class="k">Scope</span><span class="v">Branch end only</span></div>
+      <div><span class="k">Status</span><span class="v">Awaiting approval — nothing built</span></div>
+      <div><span class="k">Tested</span><span class="v">No device reachable</span></div>
+    </div>
+  </header>
+
+  <div class="cols">
+    <nav class="toc" aria-label="Contents">
+      <ol>
+        <li><a href="#s1">The job</a></li>
+        <li><a href="#s2">Naming rule</a></li>
+        <li><a href="#s3">Dynamic DNS tab</a></li>
+        <li><a href="#s4">VPN Tunnel tab</a></li>
+        <li><a href="#s5">Finding each other</a></li>
+        <li><a href="#s6">What gets written</a></li>
+        <li><a href="#s7">Validation</a></li>
+        <li><a href="#s8">Preview, Apply, Verify</a></li>
+        <li><a href="#s9">Templates &amp; secrets</a></li>
+        <li><a href="#s10">Code layout</a></li>
+        <li><a href="#s11">On-site sequence</a></li>
+        <li><a href="#s12">Risks</a></li>
+        <li><a href="#s13">Test plan</a></li>
+        <li><a href="#s14">Phases</a></li>
+        <li><a href="#s15">Open decisions</a></li>
+      </ol>
+    </nav>
+
+    <main>
+
+      <!-- 1 -->
+      <section id="s1">
+        <div class="sec-head"><span class="sec-num">01</span><h2>The job</h2></div>
+        <p>Both ends of this VPN sit on dynamic ISP addresses, so neither can be reached by a fixed IP. Each side has to publish a name and look the other one up. HO already does its half — <code>homadina.fortidyndns.com</code> on WAN (port1). The branch has no name at all yet, which is why HO cannot dial it and the tunnel cannot exist.</p>
+        <p>So the two tabs are two halves of one task, and they are deliberately ordered that way in the window:</p>
+        <div class="grid2">
+          <div class="card">
+            <h4>Tab 6 — Dynamic DNS</h4>
+            <p style="margin:0">Register <strong>this branch's</strong> name with FortiGuard so its address is always findable, however often the ISP changes it.</p>
+          </div>
+          <div class="card">
+            <h4>Tab 7 — VPN Tunnel</h4>
+            <p style="margin:0">Build the IPsec tunnel to HO's name, route the office LAN and Staff WiFi through it, and keep Guest out.</p>
+          </div>
+        </div>
+        <div class="note warn" style="margin-top:16px">
+          <span class="lbl">Both are on-site steps</span>
+          <p>FortiGuard DDNS only registers when the unit is online and registered with FortiCare — today every entitlement on the staged unit reads <code>pending</code> because it has never had an uplink. Neither tab can do its job during staging. They run after the ISP credentials go in, alongside the WAN cable.</p>
+        </div>
+      </section>
+
+      <!-- 2 -->
+      <section id="s2">
+        <div class="sec-head"><span class="sec-num">02</span><h2>Two names, two rules</h2></div>
+        <p>The DNS name and the tunnel name are <strong>separate fields on separate tabs</strong>. They can read the same, but nothing forces it — a branch can be <code>alain</code> on the internet and <code>abudhabi3</code> in the tunnel list. Each name has its own constraint, because each is limited by a different thing.</p>
+
+        <h3>The tunnel name — capped at 11 characters</h3>
+        <p>A FortiGate IPsec tunnel becomes an interface, and interface names stop at <strong>15 characters</strong>; go over and the write is rejected. <code>toHO</code> costs four, so the branch name gets eleven and the maths can never fail:</p>
+        <div class="namefig">
+          <span class="a"><em>you type · max 11</em>alain</span>
+          <span class="b"><em>fixed</em>toHO</span>
+          <span class="c2"><em>tunnel name · 9 of 15</em>alaintoHO</span>
+        </div>
+        <p>The field enforces it by <strong>refusing the 12th character</strong> rather than complaining afterwards, and a live counter shows <code>alain · 5/11</code> under the box. The tunnel name below it is shown but not editable — it is derived, so there is nothing to mistype.</p>
+        <div class="scroll">
+          <table>
+            <thead><tr><th>Typed on the VPN tab</th><th>Tunnel name</th><th>Length</th></tr></thead>
+            <tbody>
+              <tr><td><code>alain</code></td><td>alaintoHO</td><td>9</td></tr>
+              <tr><td><code>branch07</code></td><td>branch07toHO</td><td>12</td></tr>
+              <tr><td><code>musaffah11</code></td><td>musaffah11toHO</td><td>14</td></tr>
+              <tr><td><code>khalifacity</code></td><td>khalifacitytoHO</td><td>15 — the ceiling</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <h3>The DNS name — its own field, its own limit</h3>
+        <p>Nothing about DNS cares about 15 characters, so this field is not squeezed by the tunnel's limit. It takes up to <strong>24 characters</strong> — comfortably inside the 63 a DNS label allows, and short enough to type at a branch — so a site whose name will not fit in a tunnel name can still have a readable address on the internet.</p>
+        <div class="scroll">
+          <table>
+            <thead><tr><th>Typed on the DNS tab</th><th>Registered name</th><th>Tunnel name on the other tab</th></tr></thead>
+            <tbody>
+              <tr><td><code>alain</code></td><td>alain.fortidyndns.com</td><td>could be anything — say <code>alaintoHO</code></td></tr>
+              <tr><td><code>khalifacity</code></td><td>khalifacity.fortidyndns.com</td><td><code>khalifacitytoHO</code> — just fits</td></tr>
+              <tr><td><code>musaffah-branch</code></td><td>musaffah-branch.fortidyndns.com</td><td>too long for a tunnel; use <code>musaffahtoHO</code></td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p>Both fields take lowercase letters, digits and hyphens, not starting or ending with a hyphen — lowercase because one becomes a DNS name, and the same character set is safe in an interface name.</p>
+        <div class="note">
+          <span class="lbl">Kept apart on purpose</span>
+          <p>The tabs do not copy from each other, so changing one never silently rewrites the other. The VPN tab does show this branch's registered DNS name as a read-only reference line, since that is the thing HO needs — but it is information, not a link. If you later want one field driving both, that is a small change to make then.</p>
+        </div>
+      </section>
+
+      <!-- 3 -->
+      <section id="s3">
+        <div class="sec-head"><span class="sec-num">03</span><h2>Dynamic DNS tab</h2></div>
+        <p>Four controls, one of which is usually left alone.</p>
+        <pre class="mock">  <b>This branch's name on the internet</b>
+
+  Branch name         [ alain_______________ ]  <i>5 / 24</i>
+  Domain              [ fortidyndns.com  ▾ ]   <i>matches head office</i>
+
+                      → <b>alain.fortidyndns.com</b>
+
+  Internet port       [ wan1 ▾ ]        <i>the port the ISP line plugs into</i>
+
+  [ ] This FortiGate sits behind an ISP router and gets a
+      private address  <i>(registers the public address instead)</i>
+
+  [ Check the name is free ]   [ Apply ]   [ Check it works ]</pre>
+        <h3>What each control does</h3>
+        <div class="scroll">
+          <table>
+            <thead><tr><th>Control</th><th>Writes</th><th>Notes</th></tr></thead>
+            <tbody>
+              <tr><td>Branch name + Domain</td><td><code>ddns-domain</code></td><td>Full name including suffix, up to 24 characters before the dot. Suffixes offered: <code>fortidyndns.com</code> (default, matches HO), <code>fortiddns.com</code>, <code>float-zone.com</code>.</td></tr>
+              <tr><td>Internet port</td><td><code>monitor-interface</code></td><td>Dropdown of the device's real interfaces, WAN-role first, defaulting to <code>wan1</code>.</td></tr>
+              <tr><td>Behind an ISP router</td><td><code>use-public-ip</code></td><td>Off by default — matches your HO entry, whose Public IP column reads Disabled. On when the WAN port holds a private address.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <h3>The three buttons</h3>
+        <ul>
+          <li><strong>Check the name is free</strong> — resolves the name from the laptop before claiming it. FortiGuard names are globally unique and <strong>only Fortinet Support can release one</strong> that is already taken, so this check is worth the two seconds.</li>
+          <li><strong>Apply</strong> — writes the entry and reads it back.</li>
+          <li><strong>Check it works</strong> — resolves the name again and compares the answer to the WAN address read off the device. Matching addresses is the only real proof it registered; a successful write proves nothing.</li>
+        </ul>
+        <div class="note">
+          <span class="lbl">Why the laptop does the lookup</span>
+          <p>Registration happens between the FortiGate and FortiGuard, and the REST API exposes no status for it. An independent lookup from the laptop is the honest test — and it fails in the same way a branch user would experience it.</p>
+        </div>
+      </section>
+
+      <!-- 4 -->
+      <section id="s4">
+        <div class="sec-head"><span class="sec-num">04</span><h2>VPN Tunnel tab</h2></div>
+        <p>The wizard in your screenshots asks for a dozen things across four steps. Most of them this tool already knows, so the form asks for <strong>four</strong>: this branch's name, HO's name, the key, and HO's networks. The reference line under the tunnel name shows what this branch registered on the DNS tab — the name HO will point at — without tying the two fields together.</p>
+        <pre class="mock">  <b>Tunnel to head office</b>
+
+  Branch name         [ alain______ ]   <i>5 / 11</i>
+  Tunnel name         <b>alaintoHO</b>        <i>built for you · 9 of 15</i>
+
+  <i>this branch is alain.fortidyndns.com on the internet</i>
+
+  Head office name    [ homadina.fortidyndns.com_____ ]
+  Pre-shared key      [ ****************** ] [show]
+
+  <b>Ports</b>
+  Internet port out   [ wan1 ▾ ]     <i>the tunnel leaves by this port</i>
+  Inside ports in     [x] internal   office LAN
+                      [x] internal2  Staff WiFi
+                      [ ] internal3  Guest WiFi — <i>locked, guests never reach HO</i>
+
+  <b>Networks</b>
+  This branch sends   172.21.0.0/21, 192.168.1.0/24   <i>read from your tabs</i>
+  Head office has     [ 10.0.0.0/24________ ]  [+ add another]
+
+  Internet access     stays local — branch traffic still goes out wan1
+
+  [ Preview ]   [ Apply ]   [ Check tunnel ]</pre>
+        <h3>The two port pickers</h3>
+        <p>These mirror the wizard exactly: the <strong>Internet port out</strong> is step 2's <em>Outgoing Interface</em> — the WAN the tunnel is built on. The <strong>Inside ports in</strong> are step 3's <em>Local interface</em> — the networks allowed to cross it. Both are real dropdowns reading the device's interface list, not hard-coded to <code>wan1</code> and <code>internal</code>, so a branch wired differently still works.</p>
+        <p>Guest is rendered but permanently unticked, with the reason beside it. It is enforced in the package, not just greyed in the form — no code path can put <code>internal3</code> into a selector or a policy.</p>
+        <h3>What is deliberately not on the form</h3>
+        <p>Encryption, DH groups, IKE version, DPD, keylife and NAT-traversal all have defaults chosen to match a FortiGate-to-FortiGate wizard tunnel. They sit behind an <strong>Advanced (match head office)</strong> expander, collapsed, because they only ever get touched when HO's settings differ — and then they must be edited, not discovered through a CLI session at a branch.</p>
+      </section>
+
+      <!-- 5 -->
+      <section id="s5">
+        <div class="sec-head"><span class="sec-num">05</span><h2>How the two ends find each other</h2></div>
+        <figure>
+          <svg viewBox="0 0 760 250" role="img" aria-label="Branch FortiGate and HO FortiGate each resolve the other's DDNS name across the internet; the branch initiates the tunnel.">
+            <rect class="s-box" x="8" y="56" width="212" height="92" rx="6" stroke-width="1.5"/>
+            <text class="s-ink" x="26" y="84" font-family="ui-monospace,Consolas,monospace" font-size="14" font-weight="600">Branch FortiGate</text>
+            <text class="s-acc" x="26" y="106" font-family="ui-monospace,Consolas,monospace" font-size="12.5">alain.fortidyndns.com</text>
+            <text class="s-mut" x="26" y="126" font-family="ui-monospace,Consolas,monospace" font-size="11.5">wan1 · PPPoE · address changes</text>
+
+            <rect class="s-box" x="540" y="56" width="212" height="92" rx="6" stroke-width="1.5"/>
+            <text class="s-ink" x="558" y="84" font-family="ui-monospace,Consolas,monospace" font-size="14" font-weight="600">HO FortiGate</text>
+            <text class="s-acc" x="558" y="106" font-family="ui-monospace,Consolas,monospace" font-size="12.5">homadina.fortidyndns.com</text>
+            <text class="s-mut" x="558" y="126" font-family="ui-monospace,Consolas,monospace" font-size="11.5">port1 · address changes</text>
+
+            <ellipse class="s-cloud" cx="380" cy="102" rx="88" ry="40" stroke-width="1.5"/>
+            <text class="s-mut" x="380" y="98" text-anchor="middle" font-family="ui-monospace,Consolas,monospace" font-size="12">FortiGuard DDNS</text>
+            <text class="s-mut" x="380" y="116" text-anchor="middle" font-family="ui-monospace,Consolas,monospace" font-size="11">name → current address</text>
+
+            <path class="s-dash" d="M150 60 C 200 20, 300 20, 330 68" stroke-width="1.4"/>
+            <path class="s-dash" d="M610 60 C 560 20, 460 20, 430 68" stroke-width="1.4"/>
+            <text class="s-mut" x="380" y="24" text-anchor="middle" font-family="ui-monospace,Consolas,monospace" font-size="11">each end publishes its address every 5 minutes</text>
+
+            <path class="s-line" d="M112 156 L112 196 L648 196 L648 156" stroke-width="2"/>
+            <polygon class="s-acc" points="648,150 642,162 654,162"/>
+            <rect class="s-cloud" x="252" y="180" width="258" height="32" rx="4" stroke-width="1"/>
+            <text class="s-acc" x="381" y="201" text-anchor="middle" font-family="ui-monospace,Consolas,monospace" font-size="12">the branch always dials · tunnel stays up</text>
+
+            <text class="s-mut" x="381" y="238" text-anchor="middle" font-family="ui-monospace,Consolas,monospace" font-size="11.5">HO dialling back is optional — and impossible if the branch ISP uses CGNAT</text>
+          </svg>
+          <figcaption>Both ends resolve a name rather than an address. Only the branch-initiated direction is relied upon.</figcaption>
+        </figure>
+        <p>Fortinet's documented pattern is one static side and one DDNS side. Yours has DDNS at both ends, which works, but it has one weak point worth designing around: after an ISP address change there is a DNS lag, and if a branch ISP hands out a <strong>CGNAT address the branch is not reachable from outside at all</strong> — HO could never dial in, no matter how correct the DDNS entry is.</p>
+        <p>So the design does not depend on HO dialling. Phase 2 gets <code>auto-negotiate enable</code> and <code>keepalive enable</code>, phase 1 gets <code>dpd on-idle</code>: the branch builds the tunnel itself, re-tries every five seconds until it is up, and keeps it up with no traffic. HO then simply finds a live tunnel waiting. The branch DDNS name stays useful for HO-initiated management and as the belt to that braces.</p>
+      </section>
+
+      <!-- 6 -->
+      <section id="s6">
+        <div class="sec-head"><span class="sec-num">06</span><h2>What gets written to the device</h2></div>
+        <p>Every object the GUI wizard creates, written directly through the REST API and read back afterwards.</p>
+
+        <h4>Dynamic DNS</h4>
+        <span class="endpoint">PUT/POST /api/v2/cmdb/system/ddns</span>
+        <pre><span class="c">// keyed by an integer ddnsid — reuse the entry on this
+// interface if one exists, otherwise take max(ddnsid)+1</span>
+{
+  <span class="k">"ddnsid"</span>: 1,
+  <span class="k">"ddns-server"</span>: <b>"FortiGuardDDNS"</b>,
+  <span class="k">"ddns-domain"</span>: <b>"alain.fortidyndns.com"</b>,
+  <span class="k">"monitor-interface"</span>: [{ <span class="k">"interface-name"</span>: <b>"wan1"</b> }],
+  <span class="k">"use-public-ip"</span>: <b>"disable"</b>
+}</pre>
+
+        <h4>Tunnel — phase 1</h4>
+        <span class="endpoint">POST /api/v2/cmdb/vpn.ipsec/phase1-interface</span>
+        <pre>{
+  <span class="k">"name"</span>: <b>"alaintoHO"</b>,          <span class="c">// becomes the tunnel interface</span>
+  <span class="k">"type"</span>: <b>"ddns"</b>,
+  <span class="k">"remotegw-ddns"</span>: <b>"homadina.fortidyndns.com"</b>,
+  <span class="k">"interface"</span>: <b>"wan1"</b>,
+  <span class="k">"ike-version"</span>: <b>"2"</b>,           <span class="c">// must match HO</span>
+  <span class="k">"peertype"</span>: "any",
+  <span class="k">"authmethod"</span>: "psk",
+  <span class="k">"psksecret"</span>: <b>"…"</b>,             <span class="c">// never logged, never saved</span>
+  <span class="k">"proposal"</span>: "aes256-sha256 aes128-sha256",
+  <span class="k">"dhgrp"</span>: "14",
+  <span class="k">"dpd"</span>: "on-idle",
+  <span class="k">"dpd-retryinterval"</span>: 60,
+  <span class="k">"nattraversal"</span>: "enable",
+  <span class="k">"net-device"</span>: "disable",
+  <span class="k">"wizard-type"</span>: "static-fortigate", <span class="c">// shows in the GUI as a wizard tunnel</span>
+  <span class="k">"comments"</span>: "Built by FortiGate Branch Provisioner"
+}</pre>
+
+        <h4>Tunnel — phase 2, one selector per inside network</h4>
+        <span class="endpoint">POST /api/v2/cmdb/vpn.ipsec/phase2-interface</span>
+        <pre>{
+  <span class="k">"name"</span>: <b>"alaintoHO-lan"</b>,
+  <span class="k">"phase1name"</span>: "alaintoHO",
+  <span class="k">"src-addr-type"</span>: "subnet", <span class="k">"src-subnet"</span>: <b>"172.21.0.0 255.255.248.0"</b>,
+  <span class="k">"dst-addr-type"</span>: "name",   <span class="k">"dst-name"</span>: <b>"alaintoHO_remote"</b>,
+  <span class="k">"auto-negotiate"</span>: <b>"enable"</b>,   <span class="c">// the branch initiates</span>
+  <span class="k">"keepalive"</span>: <b>"enable"</b>,        <span class="c">// and holds it up with no traffic</span>
+  <span class="k">"pfs"</span>: "enable", <span class="k">"dhgrp"</span>: "14"
+}
+<span class="c">// second selector: alaintoHO-staff, src 192.168.1.0/24</span></pre>
+
+        <h4>Addresses, policies, routes</h4>
+        <div class="scroll">
+          <table>
+            <thead><tr><th>Object</th><th>Named</th><th>Detail</th></tr></thead>
+            <tbody>
+              <tr><td><code>firewall/address</code></td><td>alaintoHO_local_lan, _local_staff, _remote_1…</td><td>One per subnet on each side.</td></tr>
+              <tr><td><code>firewall/addrgrp</code></td><td>alaintoHO_local, alaintoHO_remote</td><td>Groups so policies stay readable when subnets are added.</td></tr>
+              <tr><td><code>firewall/policy</code></td><td>vpn_alaintoHO_out</td><td>internal + internal2 → alaintoHO, local group → remote group, <strong>NAT off</strong>.</td></tr>
+              <tr><td><code>firewall/policy</code></td><td>vpn_alaintoHO_in</td><td>The mirror image, so HO can reach branch machines.</td></tr>
+              <tr><td><code>router/static</code></td><td>— per HO subnet</td><td><code>dst</code> = HO subnet, <code>device</code> = alaintoHO, distance 10.</td></tr>
+              <tr><td><code>router/static</code></td><td>— blackhole</td><td>Same subnet, <code>blackhole enable</code>, distance 254.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="note">
+          <span class="lbl">Why the blackhole route matters</span>
+          <p>It is the piece people leave out. Without it, when the tunnel drops, HO-bound traffic falls through to the default route and leaves the branch over the open internet — NATed, unencrypted and silently. With it, that traffic simply fails until the tunnel returns.</p>
+        </div>
+        <p>Every write is read back before the step reports success — the rule the rest of this codebase already runs on, since a FortiGate cmdb <code>PUT</code> can return <code>success</code> while quietly dropping a field it cannot apply.</p>
+      </section>
+
+      <!-- 7 -->
+      <section id="s7">
+        <div class="sec-head"><span class="sec-num">07</span><h2>Validation, before anything is sent</h2></div>
+        <div class="scroll">
+          <table>
+            <thead><tr><th>Check</th><th>Result</th><th>Why</th></tr></thead>
+            <tbody>
+              <tr><td>VPN branch name 1–11 chars, <code>a–z 0–9 -</code></td><td><span class="chip hi">block</span></td><td>Keeps <code>&lt;name&gt;toHO</code> inside the 15-character interface limit.</td></tr>
+              <tr><td>DNS branch name 1–24 chars, same character set</td><td><span class="chip hi">block</span></td><td>A legal DNS label. Independent of the tunnel name.</td></tr>
+              <tr><td>Head office name is a valid FQDN</td><td><span class="chip hi">block</span></td><td>A typo here fails as an unreachable peer, which reads like a firewall fault.</td></tr>
+              <tr><td>Pre-shared key ≥ 6 characters</td><td><span class="chip hi">block</span></td><td>FortiGate's own minimum; rejected at the device otherwise.</td></tr>
+              <tr><td>HO subnets do not overlap any branch subnet</td><td><span class="chip hi">block</span></td><td>Overlapping selectors route a branch's own traffic into the tunnel.</td></tr>
+              <tr><td>At least one inside port ticked</td><td><span class="chip hi">block</span></td><td>A tunnel nothing is allowed to use.</td></tr>
+              <tr><td>Chosen internet port exists and is up</td><td><span class="chip md">warn</span></td><td>No uplink yet means the tunnel cannot come up — worth saying now.</td></tr>
+              <tr><td>Staff WiFi still on the default 192.168.1.0/24</td><td><span class="chip md">warn</span></td><td>Identical on every branch. Once two branches connect, HO's routing breaks.</td></tr>
+              <tr><td>DDNS name already resolves elsewhere</td><td><span class="chip md">warn</span></td><td>Probably taken; claiming it needs Fortinet Support to unpick.</td></tr>
+              <tr><td>Guest network in any selector or policy</td><td><span class="chip lo">impossible</span></td><td>Not a validation — the code has no path that puts it there.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p>The subnet-overlap check finally closes the open item in the project notes: unique addressing per branch stops being a convention and becomes something the tool refuses to violate.</p>
+      </section>
+
+      <!-- 8 -->
+      <section id="s8">
+        <div class="sec-head"><span class="sec-num">08</span><h2>Preview, Apply, Verify</h2></div>
+        <p>Both tabs get the same three-verb treatment the existing tabs have, because it is what makes this safe to run at a branch with someone waiting.</p>
+        <ul>
+          <li><strong>Preview</strong> — reads the device and lists only what would change: <em>"tunnel alaintoHO — would be created"</em>, <em>"route 10.0.0.0/24 → alaintoHO — already correct"</em>. Sends nothing.</li>
+          <li><strong>Apply</strong> — writes in dependency order (phase 1 → phase 2 → addresses → policies → routes), reading each back. A failure stops there and says which object it got to, so a re-run resumes cleanly. Every step is idempotent.</li>
+          <li><strong>Check tunnel</strong> — reads <code>/api/v2/monitor/vpn/ipsec</code> and reports in plain words: up or down, how long, bytes each way, and which selector is dead if only one is. A down tunnel gets the three usual causes named — key mismatch, HO has no matching tunnel, no uplink yet — instead of a raw status code.</li>
+        </ul>
+      </section>
+
+      <!-- 9 -->
+      <section id="s9">
+        <div class="sec-head"><span class="sec-num">09</span><h2>Templates and secrets</h2></div>
+        <p>These fields join <code>BranchSpec</code>, so they travel in the saved branches built in v1.1. Pick <em>Al Ain</em> from the drop-down and the DDNS name, tunnel name, HO name, ports and subnets all fill in — the whole branch, including its tunnel, described by one file.</p>
+        <div class="scroll">
+          <table>
+            <thead><tr><th>New field</th><th>Saved?</th><th>Note</th></tr></thead>
+            <tbody>
+              <tr><td><code>ddns_name</code></td><td>yes</td><td>The internet name, up to 24 characters.</td></tr>
+              <tr><td><code>vpn_branch_name</code></td><td>yes</td><td>Separate field, up to 11. <code>vpn_branch_name + "toHO"</code> is the tunnel name — derived, never stored.</td></tr>
+              <tr><td><code>ddns_suffix</code>, <code>ddns_port</code>, <code>ddns_public_ip</code></td><td>yes</td><td>—</td></tr>
+              <tr><td><code>vpn_remote_ddns</code></td><td>yes</td><td>Identical on every branch — see below.</td></tr>
+              <tr><td><code>vpn_wan_port</code>, <code>vpn_inside_ports</code>, <code>vpn_remote_subnets</code></td><td>yes</td><td>—</td></tr>
+              <tr><td><code>vpn_ike</code>, proposals, DH group</td><td>yes</td><td>Advanced block; defaults if absent.</td></tr>
+              <tr><td><code>vpn_psk</code></td><td><strong>never</strong></td><td>Same rule as the admin and PPPoE passwords.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="note">
+          <span class="lbl">One observation worth acting on</span>
+          <p>HO's name is the same for every branch in the estate, and so is the encryption profile. Those belong in a small <strong>estate defaults</strong> file beside <code>.env</code>, filled in once and pre-loaded into every new branch, rather than retyped into each template where they can drift apart. The per-branch template still overrides it.</p>
+        </div>
+      </section>
+
+      <!-- 10 -->
+      <section id="s10">
+        <div class="sec-head"><span class="sec-num">10</span><h2>Code layout</h2></div>
+        <p>The project rule holds: no device logic in the GUI or the scripts. Two new package modules, everything else a thin front end.</p>
+        <div class="scroll">
+          <table>
+            <thead><tr><th>File</th><th>New / changed</th><th>Contents</th></tr></thead>
+            <tbody>
+              <tr><td><code>fortigate/ddns.py</code></td><td>new</td><td><code>SUFFIXES</code>, <code>full_name()</code>, <code>apply_ddns()</code>, <code>read_ddns()</code>, <code>clear_ddns()</code>, <code>resolve()</code>, <code>verify_ddns()</code>.</td></tr>
+              <tr><td><code>fortigate/vpn.py</code></td><td>new</td><td><code>tunnel_name()</code>, <code>validate_vpn()</code>, <code>preview_vpn()</code>, <code>apply_vpn()</code>, <code>tunnel_status()</code>, <code>verify_vpn()</code>, <code>remove_vpn()</code>.</td></tr>
+              <tr><td><code>fortigate/branch.py</code></td><td>changed</td><td>New <code>BranchSpec</code> fields, extended <code>validate()</code> for the overlap checks.</td></tr>
+              <tr><td><code>fortigate/templates.py</code></td><td>changed</td><td><code>vpn_psk</code> added to <code>SECRET_KEYS</code>. Nothing else — unknown keys already load safely.</td></tr>
+              <tr><td><code>branch_gui.py</code></td><td>changed</td><td>Two tabs, the character-limited name field, the derived-name label, worker-thread jobs.</td></tr>
+              <tr><td><code>scripts/configure-ddns.py</code></td><td>new</td><td>CLI face: <code>--name</code>, <code>--suffix</code>, <code>--port</code>, <code>--public-ip</code>, <code>--verify</code>.</td></tr>
+              <tr><td><code>scripts/configure-vpn.py</code></td><td>new</td><td><code>--branch NAME</code> to pull a saved branch, <code>--branch-name</code> (the 11-char tunnel half), <code>--ho</code>, <code>--psk</code>, <code>--preview</code>, <code>--verify</code>, <code>--remove</code>.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p><code>provision-branch.py</code> is untouched. Staging and on-site work stay separate commands, which is what the two-phase reality at a branch actually looks like.</p>
+      </section>
+
+      <!-- 11 -->
+      <section id="s11">
+        <div class="sec-head"><span class="sec-num">11</span><h2>What the engineer does on site</h2></div>
+        <div class="scroll">
+          <table>
+            <thead><tr><th>#</th><th>Step</th><th>Where</th></tr></thead>
+            <tbody>
+              <tr><td>1</td><td>Pick the branch from Saved branches</td><td>top bar</td></tr>
+              <tr><td>2</td><td>Enter the ISP PPPoE username and password, plug in the WAN cable</td><td>Internet tab</td></tr>
+              <tr><td>3</td><td>Confirm the branch is online</td><td>Connect tab</td></tr>
+              <tr><td>4</td><td>Check the name is free → Apply → Check it works</td><td>Dynamic DNS</td></tr>
+              <tr><td>5</td><td>Type HO's name and the pre-shared key → Preview → Apply</td><td>VPN Tunnel</td></tr>
+              <tr><td>6</td><td>Check tunnel — expect <em>up</em> within about a minute</td><td>VPN Tunnel</td></tr>
+              <tr><td>7</td><td>Update the saved branch so the DDNS name is recorded</td><td>top bar</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p>Step 4 has to finish before HO adds its end, because HO's tunnel points at a name that must already resolve. That ordering is the reason the DDNS tab is built first.</p>
+      </section>
+
+      <!-- 12 -->
+      <section id="s12">
+        <div class="sec-head"><span class="sec-num">12</span><h2>Risks</h2></div>
+        <div class="scroll">
+          <table>
+            <thead><tr><th>Risk</th><th>Weight</th><th>How the build handles it</th></tr></thead>
+            <tbody>
+              <tr>
+                <td><strong>No FortiGate to test against.</strong> Nothing here has touched hardware.</td>
+                <td><span class="chip hi">high</span></td>
+                <td>Bench test on the staged unit is a gate, not a formality — see §13. Preview prints the exact JSON so it can be read before it is sent.</td>
+              </tr>
+              <tr>
+                <td><strong>HO's settings must match.</strong> A different IKE version or proposal fails with unhelpful logs.</td>
+                <td><span class="chip hi">high</span></td>
+                <td>Defaults chosen to match a wizard-built FortiGate tunnel; everything exposed in Advanced; Check tunnel names this as a likely cause.</td>
+              </tr>
+              <tr>
+                <td><strong>Branch ISP uses CGNAT.</strong> The DDNS name registers an address nobody can reach.</td>
+                <td><span class="chip md">medium</span></td>
+                <td>The branch always initiates, so the tunnel works anyway. Check it works reports the mismatch plainly instead of leaving it to be discovered later.</td>
+              </tr>
+              <tr>
+                <td><strong>FortiGuard registration.</strong> Entitlements read <code>pending</code> until the unit is online and registered.</td>
+                <td><span class="chip md">medium</span></td>
+                <td>The tab states it is an on-site step and fails with that explanation rather than a REST error.</td>
+              </tr>
+              <tr>
+                <td><strong>Duplicate branch subnets.</strong> Today every branch would use 192.168.1.0/24.</td>
+                <td><span class="chip md">medium</span></td>
+                <td>Overlap is blocked, the shared default is warned about, and the saved branch records what each site actually uses.</td>
+              </tr>
+              <tr>
+                <td><strong>The key is a real secret.</strong> Templates get emailed between laptops.</td>
+                <td><span class="chip md">medium</span></td>
+                <td>Never written to a template, never printed to the log, masked in the form.</td>
+              </tr>
+              <tr>
+                <td><strong>Reverses a recorded decision.</strong> The notes say the VPN is configured on-site and never scripted.</td>
+                <td><span class="chip lo">low</span></td>
+                <td>CLAUDE.md updated in the same commit, with the reason and the date.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- 13 -->
+      <section id="s13">
+        <div class="sec-head"><span class="sec-num">13</span><h2>Test plan</h2></div>
+        <p>Written blind, so it gets proven on the bench before it goes near a branch. The staged 60F, an internet uplink, and HO's real tunnel at the other end.</p>
+        <ol>
+          <li>Back up the unit's config — the restore point for everything below.</li>
+          <li>DDNS: apply, confirm <code>system/ddns</code> reads back, resolve the name from the laptop, compare to the WAN address.</li>
+          <li>Apply a second time — must report "already correct" and change nothing.</li>
+          <li>VPN Preview against a clean unit, then against a configured one: the second run must list zero changes.</li>
+          <li>Apply, then check every object exists: phase 1, both selectors, four addresses, two groups, two policies, two routes including the blackhole.</li>
+          <li>Confirm the tunnel comes up against HO and that a branch LAN machine reaches an HO machine.</li>
+          <li>Confirm a <strong>Guest</strong> machine cannot — the test that matters most.</li>
+          <li>Pull the WAN cable: traffic to HO must fail, not leak out of the internet connection. This proves the blackhole route.</li>
+          <li>Save the branch, delete the tunnel, reload the branch, re-apply — identical result.</li>
+          <li>Factory-reset rehearsal, as was done for the v1.0 checks.</li>
+        </ol>
+      </section>
+
+      <!-- 14 -->
+      <section id="s14">
+        <div class="sec-head"><span class="sec-num">14</span><h2>Phases</h2></div>
+        <p>Genuinely sequential — each phase depends on the one before it.</p>
+        <div class="scroll">
+          <table>
+            <thead><tr><th>Phase</th><th>Work</th><th>Ships</th></tr></thead>
+            <tbody>
+              <tr><td><strong>1</strong></td><td><code>fortigate/ddns.py</code>, the Dynamic DNS tab, <code>configure-ddns.py</code>, name-availability and post-apply checks</td><td>A branch can be found by name</td></tr>
+              <tr><td><strong>2</strong></td><td><code>fortigate/vpn.py</code> — phase 1/2, addresses, groups, policies, routes, preview, verify, tunnel status</td><td>The engine, CLI-drivable</td></tr>
+              <tr><td><strong>3</strong></td><td>The VPN Tunnel tab, derived naming, the two port pickers, the Guest lock</td><td>The tab you asked for</td></tr>
+              <tr><td><strong>4</strong></td><td><em>Bench test</em> — §13, on real hardware against HO</td><td><span class="chip hi">gate</span> nothing ships before this</td></tr>
+              <tr><td><strong>5</strong></td><td>Template fields, estate defaults, operator guide, README, CLAUDE.md, v1.2 build and release</td><td>v1.2 on GitHub</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p>Phases 1–3 are roughly the size of the saved-branches work in v1.1. Phase 4 needs you, a device and an uplink; it is the long pole, not the code.</p>
+      </section>
+
+      <!-- 15 -->
+      <section id="s15">
+        <div class="sec-head"><span class="sec-num">15</span><h2>Open decisions</h2></div>
+        <p>The first three unblock phases 1 and 2; the rest have working defaults if you would rather not decide now.</p>
+
+        <div class="q">
+          <h4>1 · Head office networks</h4>
+          <p>What subnet or subnets sit behind <code>homadina.fortidyndns.com</code>? The project notes propose <code>10.0.0.0/24</code>. Whatever is real becomes the prefilled default.</p>
+        </div>
+        <div class="q">
+          <h4>2 · IKE version and encryption at HO</h4>
+          <p>Open HO's existing tunnel and tell me IKE v1 or v2 and its proposals — the branch must match exactly. <span class="rec">Default if unanswered: IKEv2, aes256-sha256 / aes128-sha256, DH 14.</span></p>
+        </div>
+        <div class="q">
+          <h4>3 · One pre-shared key for the estate, or one per branch?</h4>
+          <p><span class="rec">Recommended: one per branch.</span> A leaked key then costs one site, not all of them, and it is no extra work — the engineer types a key at each branch either way.</p>
+        </div>
+        <div class="q">
+          <h4>4 · "Incoming internet port" — which did you mean?</h4>
+          <p><span class="rec">Planned reading:</span> the wizard's two pickers — outgoing WAN port, and the inside ports allowed across the tunnel. The alternative is a <strong>second WAN for failover</strong>, so the tunnel moves to wan2 when wan1 dies. That is a real feature and a bigger one — SD-WAN or a second tunnel with route priorities — and I would treat it separately.</p>
+        </div>
+        <div class="q">
+          <h4>5 · Linking the two names later</h4>
+          <p>They are independent for now, as you asked. <span class="rec">Worth revisiting once a few branches are live:</span> if in practice you always type the same word twice, one field with an override is less to get wrong. Leaving it separate costs nothing now and keeps that door open.</p>
+        </div>
+        <div class="q">
+          <h4>6 · Domain suffix</h4>
+          <p><span class="rec">Default: fortidyndns.com</span>, matching HO. The other two stay in the dropdown.</p>
+        </div>
+        <div class="q">
+          <h4>7 · Pre-shared key in saved templates</h4>
+          <p><span class="rec">Recommended: never saved</span>, matching the admin and PPPoE passwords. Say the word if convenience should win instead.</p>
+        </div>
+      </section>
+
+      <footer>
+        Plan only — no code written. FortiGate 60F · FortiOS 7.4.9 · provisioner v1.1 → v1.2
+      </footer>
+
+    </main>
+  </div>
+</div>

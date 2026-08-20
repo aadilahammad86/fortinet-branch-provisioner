@@ -10,6 +10,22 @@ repeatable way. We built the full config on one unit, saved every step as a
 Python script, and made a one-command provisioner for each new branch. The next
 big goal is a **VPN from every branch back to Head Office (HO)**.
 
+## Where things stand (updated 2026-08-20)
+
+**Released:** v1.1 on GitHub — the saved-branch templates. Latest tag `v1.1`,
+release carries `FortiGate-Branch-Provisioner-v1.1-portable.exe`.
+
+**In flight:** the **Dynamic DNS** and **VPN Tunnel** tabs (v1.2). Planned in
+full, nothing built. Start at `docs/ddns-vpn-plan.md`; the decision context is
+under "HO VPN" below. Four answers are needed before coding starts — they are
+listed at the end of the plan.
+
+**Picking this up on another machine:** clone, `cp .env.example .env` and fill
+in the device address and password (`.env` is git-ignored and holds secrets).
+`branches/` (saved branch templates) is also git-ignored, so saved branches do
+not travel with the repo — copy that folder by hand, or use the GUI's
+Export…/Import… buttons.
+
 ## The device (current staged unit)
 
 | Field | Value |
@@ -44,9 +60,10 @@ All scripts use the **FortiGate REST API** over HTTPS with a login cookie:
 3. GET (monitor) endpoints don't need CSRF; PUT/POST (cmdb) do.
 
 Environment: **Windows + PowerShell** primary; a Bash (Git Bash) tool is also
-available. Python 3.12 is at
-`C:\Users\aadil\AppData\Local\Programs\Python\Python312`. No `jq` installed —
-parse JSON in Python.
+available. Python 3.12, on PATH as `python` (the install path differs per
+machine — do not hard-code it). No `jq` — parse JSON in Python. The package
+uses only the standard library; PyInstaller is needed **only** to build the
+.exe (`python -m pip install pyinstaller`).
 
 ## Architecture (since the GUI was added)
 
@@ -155,15 +172,39 @@ NATed out wan1). What remains from this design is the VPN back to HO.
 - **Guest WiFi = internet only**, isolated from LAN/Staff/VPN. ✅
 - **Web filter + application control** — built and scripted. ✅
 
-## HO VPN — decided: configured ON-SITE
+## HO VPN — DECISION REVERSED 2026-08-20: it is being built into the tool
 
-**The HO VPN is no longer a scripting task.** It is set up on-site at each
-branch, alongside the ISP PPPoE credentials. Do not build it into
-`provision-branch.py` unless the decision changes.
+The earlier decision ("configured on-site by hand, never scripted, do not build
+it into the provisioner") **no longer holds**. The IT team asked for two new GUI
+tabs, so DDNS and the HO tunnel become part of the tool.
 
-Design context still applies for whoever configures it on-site: hub-and-spoke
-**dial-up IPsec** using **DDNS** names (HO's DDNS name is given to each
-branch); branches dial in. See the VPN plan page below.
+**Read `docs/ddns-vpn-plan.md` before writing any of it** — it is the full
+implementation plan: exact API bodies, naming limits, validation, phases, the
+bench-test gate and the open decisions. `docs/ddns-vpn-plan.html` is the same
+plan laid out visually; `docs/reference/*.png` are the HO screenshots it was
+designed from.
+
+Status as of 2026-08-20: **planned, nothing built.** No code, nothing sent to a
+device. The plan was written with no FortiGate reachable, so every API body in
+it is from documentation and must be proven on the bench unit.
+
+Shape of it, in one paragraph: both ends have dynamic ISP addresses, so each
+finds the other by DDNS name. HO is already `homadina.fortidyndns.com`. Tab 6
+registers `<branch>.fortidyndns.com` for this unit; tab 7 builds an IPsec
+tunnel (`<branch>toHO`, type `ddns`) to HO's name, with phase-2 selectors,
+policies and routes for **LAN and Staff only — never Guest**, plus a blackhole
+route so HO traffic fails rather than leaking out the internet when the tunnel
+is down. The branch always initiates (`auto-negotiate` + `keepalive`), because a
+branch behind CGNAT can never be dialled.
+
+Two independent name fields, by decision: the DNS name (max 24) and the VPN
+branch name (max 11, because `<name>toHO` must fit FortiGate's 15-character
+interface-name limit). Neither field copies from the other.
+
+**Before starting, four answers are needed** (full list in the plan):
+HO's subnets; HO's IKE version and proposals; one PSK per branch or one for the
+estate; and whether "incoming internet port" meant the wizard's two interface
+pickers or a second WAN for failover.
 
 ## Still open
 
@@ -184,8 +225,13 @@ and `internal2` only — **never `internal3`**, or guests reach HO.
 ## Related documents (outside this repo)
 
 - Visual project doc: `docs/project-documentation.html` (also an Artifact).
-- VPN design plan: `C:\Users\aadil\Fortinet-Branch-VPN-Plan.html` (Artifact).
-- Git account-switch guide: `C:\Users\aadil\Git-Account-Switch-Guide\`.
+- **DDNS + VPN implementation plan: `docs/ddns-vpn-plan.md`** (text, read this
+  one) and `docs/ddns-vpn-plan.html` (visual; Artifact:
+  https://claude.ai/code/artifact/b4097763-b966-46e8-9809-f18b7211a36e).
+- HO screenshots the plan was designed from: `docs/reference/*.png` — the DNS
+  page's Dynamic DNS table and the three IPsec wizard steps.
+- Older VPN design plan and the Git account-switch guide lived at
+  `C:\Users\aadil\…` on the original machine and are **not in this repo**.
 
 ## Licensing state (important)
 
