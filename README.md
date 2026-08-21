@@ -176,13 +176,19 @@ branch. Two front ends:
 ```
 # GUI:  Filtering tab -> "Update blocked sites now"
 python scripts/configure-utm-filters.py --list-groups
+python scripts/configure-utm-filters.py --list-profiles     # what is on the device
 python scripts/configure-utm-filters.py --update-urls                 # standard list
 python scripts/configure-utm-filters.py --update-urls --groups social,jobs
 python scripts/configure-utm-filters.py --update-urls --from-file sites.txt
+python scripts/configure-utm-filters.py --update-urls --profile wifi-default
 ```
 
-It refuses if the firewall has no `Branch-WebFilter` profile to attach to,
-rather than silently saving a list nothing uses.
+The URL table is resolved **from the chosen profile**, not assumed to be id 1,
+so pointing this at `default` / `monitor-all` / `wifi-default` edits that
+profile's own list and cannot overwrite the branch one. It refuses outright if
+the named profile is not on the device, rather than saving a list nothing uses.
+The GUI shows the same thing: a profile picker, a **Show profiles** button and a
+live "Target: ... -> URL table #N ... used by <policies>" line.
 - **Application control** — blocks category **7 Remote.Access** (Teamviewer,
   AnyDesk, RDP, VNC, …) and **23 Social.Media** (Facebook, Instagram,
   Twitter, …). Everything else passes.

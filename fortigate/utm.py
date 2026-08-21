@@ -175,52 +175,111 @@ def blocked_only(entries):
     return [e for e in entries if e.get("action") == "block"]
 
 
-def update_urls(fg, urls, log=_noop):
-    """Rewrite ONLY the blocked-site list on a firewall that is already set up.
+def list_profiles(fg):
+    """Every web filter profile on the device, with the URL table each uses.
+
+    A FortiGate ships with `default`, `monitor-all` and `wifi-default` beside
+    whatever the branch standard adds, so "which profile am I editing?" is a
+    real question -- the front ends show this list rather than assuming.
+    """
+    out = []
+    for p in fg.results("/api/v2/cmdb/webfilter/profile"):
+        table = (p.get("web") or {}).get("urlfilter-table") or 0
+        out.append({"name": p.get("name"), "comment": p.get("comment") or "",
+                    "table": table})
+    return out
+
+
+def profile_policies(fg, profile):
+    """Names of the enabled policies that actually enforce `profile`."""
+    return [p.get("name") or f"#{p.get('policyid')}"
+            for p in fg.results("/api/v2/cmdb/firewall/policy")
+            if p.get("webfilter-profile") == profile
+            and p.get("utm-status") == "enable"]
+
+
+def profile_table(fg, profile):
+    """(table_id, table_name) of the URL table `profile` uses, or (0, '').
+
+    Raises if the profile does not exist -- writing a list nothing reads is
+    worse than refusing, because it looks like it worked.
+    """
+    try:
+        wf = fg.results(f"/api/v2/cmdb/webfilter/profile/{profile}")[0]
+    except (FortiGateError, IndexError):
+        raise FortiGateError(
+            f"This firewall has no web filter profile called '{profile}'. "
+            f"Pick one of the profiles it does have, or run a full Apply to "
+            f"create the branch standard one.")
+    tid = (wf.get("web") or {}).get("urlfilter-table") or 0
+    if not tid:
+        return 0, ""
+    try:
+        return tid, fg.results(
+            f"/api/v2/cmdb/webfilter/urlfilter/{tid}")[0].get("name") or ""
+    except (FortiGateError, IndexError):
+        return tid, ""
+
+
+def describe_target(fg, profile):
+    """One-line summary of what an update to `profile` would write to."""
+    tid, tname = profile_table(fg, profile)
+    pols = profile_policies(fg, profile)
+    where = (f"URL table #{tid} '{tname}'" if tid
+             else "no URL table yet -- one will be created")
+    used = (f"used by {', '.join(pols)}" if pols
+            else "NOT used by any policy -- nothing would be blocked")
+    return f"{profile} -> {where} | {used}", tid, tname, pols
+
+
+def update_urls(fg, urls, log=_noop, profile=WEBFILTER_PROFILE):
+    """Rewrite ONLY the blocked-site list that `profile` reads from.
 
     Touches nothing else -- no interfaces, no policies, no application control.
     The profile is already attached to the policies, so the new list takes
     effect the moment the table is written. Safe to run against a live branch.
+
+    The table is looked up FROM the profile rather than assumed, so pointing
+    this at a different profile edits that profile's own list and cannot
+    quietly overwrite the branch standard one.
     """
+    tid, tname = profile_table(fg, profile)          # raises if no such profile
+    if not tid:
+        used = {p["table"] for p in list_profiles(fg) if p["table"]}
+        tid = URLFILTER_ID if URLFILTER_ID not in used else max(used) + 1
+        tname = URLFILTER_NAME
+        log(f"[..] '{profile}' had no URL table -- creating #{tid} '{tname}'")
+    log(f"[..] target: profile '{profile}' -> URL table #{tid} "
+        f"'{tname or URLFILTER_NAME}'")
+
     entries = url_entries(urls)
-    state = fg.upsert("/api/v2/cmdb/webfilter/urlfilter", URLFILTER_ID, {
-        "id": URLFILTER_ID, "name": URLFILTER_NAME,
+    state = fg.upsert("/api/v2/cmdb/webfilter/urlfilter", tid, {
+        "id": tid, "name": tname or URLFILTER_NAME,
         "comment": "Branch standard blocked sites",
         "entries": entries,
     })
-    got = fg.results(f"/api/v2/cmdb/webfilter/urlfilter/{URLFILTER_ID}")[0]
-    live = got.get("entries", [])
+    live = fg.results(f"/api/v2/cmdb/webfilter/urlfilter/{tid}")[0].get("entries", [])
     if len(live) != len(entries):
         raise FortiGateError(
             f"URL list did not stick: sent {len(entries)} entries, the device "
             f"reports {len(live)}.")
-    log(f"[ok] blocked-site list {state}: {len(blocked_only(live))} sites blocked, "
+    log(f"[ok] table #{tid} {state}: {len(blocked_only(live))} sites blocked, "
         f"{len(ALLOW_URLS)} WhatsApp entries allowed")
 
-    # The profile must exist and point at this table, or the list is inert.
-    try:
-        wf = fg.results(f"/api/v2/cmdb/webfilter/profile/{WEBFILTER_PROFILE}")[0]
-    except (FortiGateError, IndexError):
-        raise FortiGateError(
-            f"No web filter profile '{WEBFILTER_PROFILE}' on this firewall. "
-            f"The list was saved but nothing uses it -- run a full Apply first.")
-    if (wf.get("web") or {}).get("urlfilter-table") != URLFILTER_ID:
-        fg.call("PUT", f"/api/v2/cmdb/webfilter/profile/{WEBFILTER_PROFILE}",
-                {"web": {"urlfilter-table": URLFILTER_ID}})
-        log(f"[ok] profile '{WEBFILTER_PROFILE}' repointed at table "
-            f"#{URLFILTER_ID}")
+    wf = fg.results(f"/api/v2/cmdb/webfilter/profile/{profile}")[0]
+    if (wf.get("web") or {}).get("urlfilter-table") != tid:
+        fg.call("PUT", f"/api/v2/cmdb/webfilter/profile/{profile}",
+                {"web": {"urlfilter-table": tid}})
+        log(f"[ok] profile '{profile}' pointed at table #{tid}")
 
     # Report, do not touch: which policies actually enforce this.
-    using = [p.get("name") or f"#{p.get('policyid')}"
-             for p in fg.results("/api/v2/cmdb/firewall/policy")
-             if p.get("webfilter-profile") == WEBFILTER_PROFILE
-             and p.get("utm-status") == "enable"]
+    using = profile_policies(fg, profile)
     if using:
         log(f"[ok] live on {len(using)} polic{'y' if len(using) == 1 else 'ies'}: "
             f"{', '.join(using)}")
     else:
-        log("[!] no policy currently uses this web filter -- the list is saved "
-            "but nothing is being blocked. Run a full Apply to attach it.", )
+        log(f"[!] no policy uses '{profile}' -- the list is saved but nothing is "
+            f"being blocked. Run a full Apply to attach it.")
     return len(blocked_only(live))
 
 

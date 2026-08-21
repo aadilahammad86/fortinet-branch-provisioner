@@ -31,6 +31,15 @@ def main():
     # other: onedir -> dist/<NAME>/ , onefile -> dist/portable/<NAME>.exe
     distpath = ROOT / "dist" / "portable" if onefile else ROOT / "dist"
     workpath = ROOT / "build" / ("portable" if onefile else "onedir")
+
+    # --out DIR builds somewhere else entirely. Useful when a copy of the app
+    # is running from the usual output folder: Windows locks the .exe, and the
+    # clean-up below would fail rather than quietly building a stale binary.
+    if "--out" in sys.argv:
+        out = sys.argv[sys.argv.index("--out") + 1]
+        distpath = Path(out).resolve()
+        workpath = distpath / "_work"
+        print(f"  building into {distpath}")
     for p in (distpath if onefile else distpath / NAME, workpath):
         if not p.exists():
             continue

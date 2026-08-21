@@ -33,7 +33,7 @@ from fortigate import branch, templates, utm
 from fortigate.templates import TemplateError
 
 APP_TITLE = "FortiGate Branch Provisioner"
-APP_VERSION = "1.2"
+APP_VERSION = "1.2.1"
 
 
 def app_dir():
@@ -595,6 +595,35 @@ class App(tk.Tk):
             "no application control — so this is safe to run on a live branch "
             "during working hours. The new list takes effect immediately.")
                   ).pack(anchor="w")
+
+        # A FortiGate carries several web filter profiles (default, monitor-all,
+        # wifi-default, ...). Say which one is being written to, and let it be
+        # changed, rather than silently assuming the branch standard.
+        pick = ttk.Frame(upd)
+        pick.pack(fill="x", pady=(10, 0))
+        ttk.Label(pick, text="Web filter profile").pack(side="left")
+        self.v_wf_profile = tk.StringVar(value=utm.WEBFILTER_PROFILE)
+        self.wf_box = ttk.Combobox(pick, textvariable=self.v_wf_profile, width=26,
+                                   values=[utm.WEBFILTER_PROFILE])
+        self.wf_box.pack(side="left", padx=(8, 8))
+        Tooltip(self.wf_box,
+                "The profile whose blocked-site list gets rewritten.\n"
+                "'Branch-WebFilter' is the one this tool creates. Press "
+                "'Show profiles' to list what is actually on this firewall.")
+        b = ttk.Button(pick, text="Show profiles", width=15,
+                       command=self.act_read_profiles)
+        b.pack(side="left")
+        Tooltip(b, "List every web filter profile on the firewall, the URL "
+                   "table each one uses and which policies use it. "
+                   "Changes nothing.")
+        self.action_buttons.append(b)
+
+        self.wf_target = ttk.Label(
+            upd, foreground="#555", wraplength=860, justify="left",
+            text="Target: Branch-WebFilter — press 'Show profiles' to confirm "
+                 "against this firewall.")
+        self.wf_target.pack(anchor="w", pady=(6, 0))
+
         r = ttk.Frame(upd)
         r.pack(fill="x", pady=(8, 0))
         b = ttk.Button(r, text="Update blocked sites now", width=26,
@@ -897,6 +926,12 @@ class App(tk.Tk):
                 elif kind == "device":
                     self.device_info = payload
                     self.dev_label.configure(text=payload)
+                elif kind == "profiles":
+                    # Widget updates must happen on the UI thread, so the
+                    # worker posts them here rather than touching Tk directly.
+                    self.wf_box.configure(values=payload)
+                elif kind == "wf_target":
+                    self.wf_target.configure(text=payload)
         except queue.Empty:
             pass
         self.after(100, self._drain_queue)
@@ -1073,40 +1108,82 @@ class App(tk.Tk):
         self._run("Verify configuration", job)
 
     # ---- blocked-site list only -----------------------------------------
+    def act_read_profiles(self):
+        """List the firewall's web filter profiles and say which we would edit."""
+        want = self.v_wf_profile.get().strip()
+
+        def job(fg, log):
+            profs = utm.list_profiles(fg)
+            log(f"Web filter profiles on {self.f_host.get()}:", "head")
+            for p in profs:
+                pols = utm.profile_policies(fg, p["name"])
+                mark = " <-- updates go here" if p["name"] == want else ""
+                log(f"  {p['name']:<22} URL table "
+                    f"{('#' + str(p['table'])) if p['table'] else '(none)':<8} "
+                    f"{('used by ' + ', '.join(pols)) if pols else 'not used by any policy'}"
+                    f"{mark}", "ok" if mark else None)
+            names = [p["name"] for p in profs]
+            self.q.put(("profiles", names))
+            if want in names:
+                summary, _tid, _tn, _pols = utm.describe_target(fg, want)
+                self.q.put(("wf_target", "Target: " + summary))
+                log("")
+                log(f"[ok] '{want}' exists — Update blocked sites now would "
+                    f"rewrite its list.", "ok")
+            else:
+                self.q.put(("wf_target",
+                            f"Target: '{want}' is NOT on this firewall — pick "
+                            f"one of: {', '.join(names)}"))
+                log("")
+                log(f"[!] '{want}' is not on this firewall. Pick one of the "
+                    f"profiles above, or run a full Apply to create the branch "
+                    f"standard one.", "fail")
+        self._run("Show web filter profiles", job)
+
     def act_update_urls(self):
         urls = self._url_lines()
+        profile = self.v_wf_profile.get().strip()
         if not urls:
             messagebox.showwarning(
                 APP_TITLE, "The blocked-website list is empty.\n\n"
                            "Press 'Reset to standard list' or add a group first.")
             return
+        if not profile:
+            messagebox.showwarning(APP_TITLE, "Choose a web filter profile first.")
+            return
         if not messagebox.askokcancel(APP_TITLE, (
                 f"Send {len(urls)} blocked sites to the firewall at "
                 f"{self.f_host.get()}?\n\n"
+                f"Web filter profile:  {profile}\n"
                 f"WhatsApp stays allowed.\n\n"
-                f"Only the blocked-site list changes. Interfaces, DHCP, policies "
-                f"and application control are left exactly as they are.")):
+                f"Only that profile's blocked-site list changes. Interfaces, "
+                f"DHCP, policies and application control are left exactly as "
+                f"they are.")):
             return
 
         def job(fg, log):
-            log(f"Updating the blocked-site list ({len(urls)} sites)…", "head")
-            utm.update_urls(fg, urls, log)
+            log(f"Updating '{profile}' ({len(urls)} sites)…", "head")
+            utm.update_urls(fg, urls, log, profile=profile)
+            summary, _t, _n, _p = utm.describe_target(fg, profile)
+            self.q.put(("wf_target", "Target: " + summary))
             log("")
-            log("Done. The new list is live on every policy that uses the "
-                "branch web filter.", "ok")
+            log(f"Done. The new list is live on every policy using '{profile}'.",
+                "ok")
         self._run("Update blocked sites", job)
 
     def act_read_urls(self):
         want = set(self._url_lines())
+        profile = self.v_wf_profile.get().strip()
 
         def job(fg, log):
-            try:
-                uf = fg.results(
-                    f"/api/v2/cmdb/webfilter/urlfilter/{utm.URLFILTER_ID}")[0]
-            except (FortiGateError, IndexError):
-                log("[!] this firewall has no branch URL filter table yet — "
-                    "run a full Apply first.", "fail")
+            summary, tid, tname, _pols = utm.describe_target(fg, profile)
+            log(summary, "head")
+            self.q.put(("wf_target", "Target: " + summary))
+            if not tid:
+                log("[!] that profile has no URL table yet — 'Update blocked "
+                    "sites now' would create one.", "warn")
                 return
+            uf = fg.results(f"/api/v2/cmdb/webfilter/urlfilter/{tid}")[0]
             rows = uf.get("entries", [])
             have = {e.get("url") for e in utm.blocked_only(rows)}
             allowed = [e.get("url") for e in rows if e.get("action") == "allow"]

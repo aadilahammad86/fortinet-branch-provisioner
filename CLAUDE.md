@@ -12,7 +12,7 @@ big goal is a **VPN from every branch back to Head Office (HO)**.
 
 ## Where things stand (updated 2026-08-20)
 
-**Released:** v1.2 on GitHub — the expanded blocked-site list (social media,
+**Released:** v1.2.1 on GitHub — the expanded blocked-site list (social media,
 messaging except WhatsApp, Malayalam + Gulf news, job sites) and the
 "Update blocked sites now" action for a firewall that is already running.
 v1.1 before it was the saved-branch templates.
@@ -125,18 +125,19 @@ form, the CLI flags, saved profiles, `preview()` and `verify()` all speak it.
   **WhatsApp is deliberately allowed**: `ALLOW_URLS` is written as `allow` rows
   with ids 1-4, above every block row, because the FortiGate takes the first
   match walking the table. Never add a whatsapp domain to a block group.
-  `utm.update_urls()` rewrites *only* this table — the action behind the GUI's
-  "Update blocked sites now" and `configure-utm-filters.py --update-urls`, for
-  changing the list on a live branch without touching anything else.
-- **App control `Branch-AppControl`**: blocks category **7 = Remote.Access**
-  and **23 = Social.Media** (IDs verified against this unit's signature DB).
-  Everything else passes.
-- Both attached to policies **#1 (LAN)** and **#2 (Staff WiFi)** only —
-  Guest (#5) is left unfiltered on purpose.
-- **HTTPS = `deep-inspection`** on those two policies.
-- **wan1 = PPPoE plug-and-play:** mode set, auto default route, **ISP username/
-  password intentionally left blank** — entered ON-SITE at each branch.
-- A full **config backup** was taken to `configs/FGT60FTK25040370-*.conf`.
+  `utm.update_urls(fg, urls, log, profile=...)` rewrites *only* the table the
+  chosen profile reads from -- the action behind the GUI's "Update blocked
+  sites now" and `configure-utm-filters.py --update-urls`, for changing the
+  list on a live branch without touching anything else. Since v1.2.1 the table
+  is resolved **from the profile** (`profile_table()`) instead of assuming id
+  1, so aiming it at `default` / `monitor-all` / `wifi-default` edits that
+  profile's own list and cannot overwrite the branch one. `list_profiles()`
+  and `describe_target()` back the GUI's profile picker and the CLI's
+  `--list-profiles`.
+- **Everything in `fortigate/` and `scripts/` must stay ASCII.** The CLI prints
+  these log lines to a cp1252 Windows console, where a stray arrow or en dash
+  crashes the script with UnicodeEncodeError. The GUI is fine either way; the
+  package is shared, so it is the package that has to be plain.
 
 > No WAN cable is connected yet, so the box has no internet uplink until an ISP
 > line is plugged into wan1 on-site.

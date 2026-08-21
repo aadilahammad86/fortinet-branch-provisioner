@@ -55,6 +55,12 @@ def main():
                          + ",".join(k for k, _, _ in utm.URL_GROUPS))
     ap.add_argument("--list-groups", action="store_true",
                     help="print the built-in site groups and exit")
+    ap.add_argument("--profile", default=utm.WEBFILTER_PROFILE,
+                    help="with --update-urls: which web filter profile's list "
+                         f"to rewrite (default: {utm.WEBFILTER_PROFILE})")
+    ap.add_argument("--list-profiles", action="store_true",
+                    help="show the web filter profiles on the device, the URL "
+                         "table each uses and which policies use it")
     ap.add_argument("--verify", action="store_true")
     args = ap.parse_args()
 
@@ -68,6 +74,17 @@ def main():
     fg = FortiGate(cfg["FGT_HOST"], cfg["FGT_USER"], cfg["FGT_PASSWORD"])
     spec = branch.BranchSpec(lan_port=args.lan_port, staff_port=args.staff_port,
                              ssl_mode=args.ssl)
+
+    if args.list_profiles:
+        print(f"Web filter profiles on {cfg['FGT_HOST']}:")
+        for p in utm.list_profiles(fg):
+            pols = utm.profile_policies(fg, p["name"])
+            table = f"#{p['table']}" if p["table"] else "(none)"
+            print(f"  {p['name']:<22} URL table {table:<8} "
+                  + (f"used by {', '.join(pols)}" if pols
+                     else "not used by any policy")
+                  + ("   <-- default target" if p["name"] == args.profile else ""))
+        return
 
     if args.update_urls:
         if args.from_file:
@@ -85,8 +102,9 @@ def main():
         else:
             urls = [u for u, _ in utm.DEFAULT_URLS]
         print(f"Updating the blocked-site list on {cfg['FGT_HOST']} "
-              f"({len(urls)} sites):")
-        utm.update_urls(fg, urls, lambda m: print(f"  {m}"))
+              f"({len(urls)} sites, profile '{args.profile}'):")
+        utm.update_urls(fg, urls, lambda m: print(f"  {m}"),
+                        profile=args.profile)
         return
 
     if args.off:

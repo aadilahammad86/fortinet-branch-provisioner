@@ -192,12 +192,35 @@ interfaces, no DHCP, no policies, no application control — nothing else is
 touched, so it is safe during working hours. The new list applies immediately;
 nobody needs to reconnect and nothing restarts.
 
+### Which web filter is being changed
+
+A FortiGate carries several web filter profiles — `default`, `monitor-all`,
+`wifi-default` and the `Branch-WebFilter` this program creates. The box shows
+which one your update goes to:
+
+```
+Web filter profile  [ Branch-WebFilter ▾ ]  [ Show profiles ]
+
+Target: Branch-WebFilter → URL table #1 'Branch-Blocked-Sites'
+        · used by internal-to-wan1
+```
+
+**Show profiles** lists every profile actually on the firewall, the URL table
+each one uses and which policies use it, then fills the drop-down with the real
+names. It changes nothing.
+
+Leave it on **Branch-WebFilter** unless you have a reason not to. If you do pick
+another profile, the program rewrites *that* profile's own list — it will not
+overwrite the branch one. And if the profile you name is not on the firewall, it
+says so and stops instead of writing a list nowhere.
+
 The normal routine for adding a site to every branch:
 
 1. Connect to the branch (Tab 1) and press **Test connection**
 2. On **Filtering**, add the site to the list — or press **Add a group**
-3. Press **Check what is blocked** to see exactly what would change
-4. Press **Update blocked sites now**
+3. Press **Show profiles** to confirm where the update will land
+4. Press **Check what is blocked** to see exactly what would change
+5. Press **Update blocked sites now**
 
 **Check what is blocked** reads the firewall's current list and shows the
 difference line by line — what would be added, what would be removed — without
