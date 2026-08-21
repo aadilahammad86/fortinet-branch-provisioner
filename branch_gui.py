@@ -29,11 +29,11 @@ import tkinter as tk
 from tkinter import ttk, filedialog, messagebox, scrolledtext, simpledialog
 
 from fortigate import FortiGate, LoginError, FortiGateError, load_env
-from fortigate import branch, templates, utm
+from fortigate import branch, ddns, templates, utm, vpn
 from fortigate.templates import TemplateError
 
 APP_TITLE = "FortiGate Branch Provisioner"
-APP_VERSION = "1.2.2"
+APP_VERSION = "1.3.0-rc1"
 
 
 def app_dir():
@@ -250,6 +250,8 @@ class App(tk.Tk):
         self._tab_internet()
         self._tab_filtering()
         self._tab_apply()
+        self._tab_ddns()
+        self._tab_vpn()
 
         # ---- log pane ----
         logframe = ttk.LabelFrame(self.paned, text="Activity log  (drag the divider "
@@ -675,6 +677,249 @@ class App(tk.Tk):
         self.url_count.configure(text=f"{n} sites blocked  ·  WhatsApp allowed")
 
     # ---- tab 5: apply ---------------------------------------------------
+    # ---- tab 6: dynamic DNS ---------------------------------------------
+    def _tab_ddns(self):
+        f = self._page("  6. Dynamic DNS  ")
+        ttk.Label(f, text="This branch's name on the internet",
+                  style="Head.TLabel").pack(anchor="w")
+        ttk.Label(f, wraplength=880, justify="left", foreground="#555", text=(
+            "Head office and this branch both get their address from the ISP, "
+            "and it changes. Registering a name means each end can still find "
+            "the other. Head office is already homadina.fortidyndns.com; this "
+            "gives the branch its own.")).pack(anchor="w", pady=(4, 12))
+
+        ttk.Label(f, style="Warn.TLabel", wraplength=880, justify="left", text=(
+            "Do this ON SITE, after the ISP line is plugged in and working. "
+            "The name is registered with FortiGuard over the internet, so it "
+            "cannot be done while the unit is being staged.")).pack(anchor="w")
+
+        grid = ttk.Frame(f)
+        grid.pack(fill="x", pady=(12, 0))
+        ttk.Label(grid, text="Branch name").grid(row=0, column=0, sticky="w",
+                                                 padx=(0, 8), pady=3)
+        self.v_ddns_name = tk.StringVar()
+        e = ttk.Entry(grid, textvariable=self.v_ddns_name, width=26)
+        e.grid(row=0, column=1, sticky="w", pady=3)
+        Tooltip(e, f"Lower case letters, digits and hyphens, up to "
+                   f"{ddns.MAX_NAME} characters.\nThis is separate from the "
+                   f"VPN tunnel name on the next tab.")
+        self.ddns_count = ttk.Label(grid, foreground="#666", text=f"0 / {ddns.MAX_NAME}")
+        self.ddns_count.grid(row=0, column=2, sticky="w", padx=(10, 0))
+
+        ttk.Label(grid, text="Domain").grid(row=1, column=0, sticky="w",
+                                            padx=(0, 8), pady=3)
+        self.v_ddns_suffix = tk.StringVar(value=ddns.DEFAULT_SUFFIX)
+        ttk.Combobox(grid, textvariable=self.v_ddns_suffix, width=24,
+                     state="readonly", values=ddns.SUFFIXES).grid(
+            row=1, column=1, sticky="w", pady=3)
+        ttk.Label(grid, foreground="#666",
+                  text="matches head office").grid(row=1, column=2, sticky="w",
+                                                   padx=(10, 0))
+
+        self.ddns_full = ttk.Label(f, style="Good.TLabel", text="")
+        self.ddns_full.pack(anchor="w", pady=(8, 0))
+        for var in (self.v_ddns_name, self.v_ddns_suffix):
+            var.trace_add("write", lambda *_a: self._refresh_ddns_name())
+
+        grid2 = ttk.Frame(f)
+        grid2.pack(fill="x", pady=(10, 0))
+        ttk.Label(grid2, text="Internet port").grid(row=0, column=0, sticky="w",
+                                                    padx=(0, 8), pady=3)
+        self.v_ddns_port = tk.StringVar(value="wan1")
+        self.ddns_port_box = ttk.Combobox(grid2, textvariable=self.v_ddns_port,
+                                          width=24, values=["wan1", "wan2"])
+        self.ddns_port_box.grid(row=0, column=1, sticky="w", pady=3)
+        Tooltip(self.ddns_port_box, "The port the ISP line plugs into.")
+
+        self.v_ddns_public = tk.BooleanVar(value=False)
+        ttk.Checkbutton(
+            f, variable=self.v_ddns_public,
+            text="This FortiGate sits behind an ISP router and gets a private "
+                 "address  (register the public address instead)").pack(
+            anchor="w", pady=(8, 0))
+
+        row = ttk.Frame(f)
+        row.pack(fill="x", pady=(14, 0))
+        for text, cmd, width, tip in (
+            ("Check the name is free", self.act_ddns_check_free, 24,
+             "Look the name up from this laptop before claiming it. "
+             "FortiGuard names are global; only Fortinet Support can release "
+             "one that is taken."),
+            ("Apply", self.act_ddns_apply, 12,
+             "Register this name on the firewall."),
+            ("Check it works", self.act_ddns_verify, 18,
+             "Read the setting back, resolve the name, and compare it with "
+             "the address the WAN port actually holds."),
+        ):
+            b = ttk.Button(row, text=text, command=cmd, width=width)
+            b.pack(side="left", padx=(0, 8))
+            Tooltip(b, tip)
+            self.action_buttons.append(b)
+        b = ttk.Button(f, text="Show what is registered now", width=30,
+                       command=self.act_ddns_show)
+        b.pack(anchor="w", pady=(10, 0))
+        self.action_buttons.append(b)
+        self._refresh_ddns_name()
+
+    def _refresh_ddns_name(self):
+        name = self.v_ddns_name.get().strip()
+        self.ddns_count.configure(text=f"{len(name)} / {ddns.MAX_NAME}")
+        err = ddns.validate_name(name) if name else None
+        if err:
+            self.ddns_full.configure(text=err, style="Warn.TLabel")
+        elif name:
+            self.ddns_full.configure(
+                text="-> " + ddns.full_name(name, self.v_ddns_suffix.get()),
+                style="Good.TLabel")
+        else:
+            self.ddns_full.configure(text="", style="Good.TLabel")
+
+    # ---- tab 7: VPN tunnel ----------------------------------------------
+    def _tab_vpn(self):
+        f = self._page("  7. VPN Tunnel  ")
+        ttk.Label(f, text="Tunnel to head office",
+                  style="Head.TLabel").pack(anchor="w")
+        ttk.Label(f, wraplength=880, justify="left", foreground="#555", text=(
+            "Builds the encrypted link from this branch to head office: the "
+            "tunnel, the networks allowed across it, the rules and the routes. "
+            "Head office must have its matching end for the tunnel to come "
+            "up.")).pack(anchor="w", pady=(4, 12))
+
+        grid = ttk.Frame(f)
+        grid.pack(fill="x")
+        ttk.Label(grid, text="Branch name").grid(row=0, column=0, sticky="w",
+                                                 padx=(0, 8), pady=3)
+        self.v_vpn_branch = tk.StringVar()
+        e = ttk.Entry(grid, textvariable=self.v_vpn_branch, width=26)
+        e.grid(row=0, column=1, sticky="w", pady=3)
+        Tooltip(e, f"Up to {vpn.MAX_BRANCH} characters. The tunnel is named "
+                   f"<branch>{vpn.SUFFIX}, and a FortiGate interface name "
+                   f"stops at {vpn.MAX_TUNNEL}.\nSeparate from the Dynamic DNS "
+                   f"name on the previous tab.")
+        self.vpn_count = ttk.Label(grid, foreground="#666",
+                                   text=f"0 / {vpn.MAX_BRANCH}")
+        self.vpn_count.grid(row=0, column=2, sticky="w", padx=(10, 0))
+
+        ttk.Label(grid, text="Tunnel name").grid(row=1, column=0, sticky="w",
+                                                 padx=(0, 8), pady=3)
+        self.vpn_tunnel_lbl = ttk.Label(grid, style="Good.TLabel", text=vpn.SUFFIX)
+        self.vpn_tunnel_lbl.grid(row=1, column=1, sticky="w", pady=3)
+        ttk.Label(grid, foreground="#666", text="built for you").grid(
+            row=1, column=2, sticky="w", padx=(10, 0))
+        self.v_vpn_branch.trace_add("write", lambda *_a: self._refresh_vpn_name())
+
+        ttk.Label(grid, text="Head office name").grid(row=2, column=0, sticky="w",
+                                                      padx=(0, 8), pady=3)
+        self.v_vpn_ho = tk.StringVar()
+        e = ttk.Entry(grid, textvariable=self.v_vpn_ho, width=36)
+        e.grid(row=2, column=1, sticky="w", pady=3)
+        Tooltip(e, "Head office's internet name, e.g. homadina.fortidyndns.com")
+
+        ttk.Label(grid, text="Pre-shared key").grid(row=3, column=0, sticky="w",
+                                                    padx=(0, 8), pady=3)
+        self.v_vpn_psk = tk.StringVar()
+        self.vpn_psk_entry = ttk.Entry(grid, textvariable=self.v_vpn_psk,
+                                       width=36, show="*")
+        self.vpn_psk_entry.grid(row=3, column=1, sticky="w", pady=3)
+        Tooltip(self.vpn_psk_entry,
+                "Must match head office exactly. Never saved to a branch file.")
+        self.v_psk_show = tk.BooleanVar(value=False)
+        ttk.Checkbutton(grid, text="show", variable=self.v_psk_show,
+                        command=lambda: self.vpn_psk_entry.configure(
+                            show="" if self.v_psk_show.get() else "*")).grid(
+            row=3, column=2, sticky="w", padx=(10, 0))
+
+        ports = ttk.LabelFrame(f, text="Ports", padding=10)
+        ports.pack(fill="x", pady=(14, 0))
+        r = ttk.Frame(ports)
+        r.pack(fill="x")
+        ttk.Label(r, text="Internet port out").pack(side="left")
+        self.v_vpn_wan = tk.StringVar(value="wan1")
+        ttk.Combobox(r, textvariable=self.v_vpn_wan, width=14,
+                     values=["wan1", "wan2"]).pack(side="left", padx=(8, 8))
+        ttk.Label(r, foreground="#666",
+                  text="the tunnel is built on this port").pack(side="left")
+
+        ttk.Label(ports, text="Inside ports that may reach head office").pack(
+            anchor="w", pady=(10, 2))
+        self.vpn_port_vars = {}
+        for port, label, on in (("internal", "Office LAN", True),
+                                ("internal2", "Staff WiFi", True),
+                                ("internal3", "Guest WiFi", False)):
+            v = tk.BooleanVar(value=on)
+            self.vpn_port_vars[port] = v
+            cb = ttk.Checkbutton(ports, variable=v,
+                                 text=f"{port}   {label}"
+                                      + ("" if on else
+                                         "   — never; guests must not reach "
+                                         "head office"))
+            cb.pack(anchor="w")
+            if port in vpn.GUEST_PORTS:
+                cb.configure(state="disabled")
+
+        nets = ttk.LabelFrame(f, text="Networks", padding=10)
+        nets.pack(fill="x", pady=(14, 0))
+        ttk.Label(nets, text="Head office networks (one per line, e.g. "
+                             "10.0.0.0/24)").pack(anchor="w")
+        self.vpn_remote_text = scrolledtext.ScrolledText(
+            nets, width=30, height=4, font=("Consolas", 9))
+        self.vpn_remote_text.pack(anchor="w", pady=(4, 0))
+        self.vpn_local_lbl = ttk.Label(
+            nets, foreground="#555", wraplength=840, justify="left",
+            text="This branch's networks are read from the firewall itself "
+                 "when you press Preview.")
+        self.vpn_local_lbl.pack(anchor="w", pady=(8, 0))
+
+        row = ttk.Frame(f)
+        row.pack(fill="x", pady=(14, 0))
+        for text, cmd, width, tip in (
+            ("Preview", self.act_vpn_preview, 14,
+             "List exactly what would be created, and read this branch's own "
+             "networks off the firewall. Changes nothing."),
+            ("Apply", self.act_vpn_apply, 12, "Build the tunnel."),
+            ("Check tunnel", self.act_vpn_status, 16,
+             "Is it up? Reads the live VPN monitor."),
+            ("Verify", self.act_vpn_verify, 12,
+             "Read every object back and check it."),
+        ):
+            b = ttk.Button(row, text=text, command=cmd, width=width)
+            b.pack(side="left", padx=(0, 8))
+            Tooltip(b, tip)
+            self.action_buttons.append(b)
+
+        ttk.Label(f, style="Warn.TLabel", wraplength=880, justify="left", text=(
+            "Head office must have a matching tunnel with the same key, or "
+            "this end sits there dialling and never connects. The branch "
+            "always dials out, so it works even where the ISP does not give "
+            "this site a reachable address.")).pack(anchor="w", pady=(12, 0))
+        b = ttk.Button(f, text="Remove this tunnel", width=20,
+                       command=self.act_vpn_remove)
+        b.pack(anchor="w", pady=(10, 0))
+        self.action_buttons.append(b)
+        self._refresh_vpn_name()
+
+    def _refresh_vpn_name(self):
+        name = self.v_vpn_branch.get().strip()
+        if len(name) > vpn.MAX_BRANCH:
+            name = name[:vpn.MAX_BRANCH]
+            self.v_vpn_branch.set(name)          # refuse the 12th character
+        self.vpn_count.configure(text=f"{len(name)} / {vpn.MAX_BRANCH}")
+        t = vpn.tunnel_name(name)
+        self.vpn_tunnel_lbl.configure(
+            text=f"{t}   ({len(t)} of {vpn.MAX_TUNNEL})" if name else vpn.SUFFIX)
+
+    def vpn_spec(self):
+        return vpn.VpnSpec(
+            branch_name=self.v_vpn_branch.get().strip(),
+            remote_ddns=self.v_vpn_ho.get().strip(),
+            psk=self.v_vpn_psk.get(),
+            wan_port=self.v_vpn_wan.get().strip() or "wan1",
+            inside_ports=[p for p, v in self.vpn_port_vars.items() if v.get()],
+            remote_subnets=[ln.strip() for ln in
+                            self.vpn_remote_text.get("1.0", "end").splitlines()
+                            if ln.strip()],
+        )
+
     def _tab_apply(self):
         f = self._page("  5. Apply  ")
         ttk.Label(f, text="Review and apply", style="Head.TLabel").pack(anchor="w")
@@ -935,6 +1180,8 @@ class App(tk.Tk):
                     self.wf_box.configure(values=payload)
                 elif kind == "wf_target":
                     self.wf_target.configure(text=payload)
+                elif kind == "vpn_local":
+                    self.vpn_local_lbl.configure(text=payload)
         except queue.Empty:
             pass
         self.after(100, self._drain_queue)
@@ -1204,6 +1451,182 @@ class App(tk.Tk):
                 log(f"  {len(missing)} to add, {len(extra)} to remove — press "
                     f"'Update blocked sites now' to apply.", "warn")
         self._run("Check blocked sites", job)
+
+    # ---- dynamic DNS -----------------------------------------------------
+    def _ddns_args(self):
+        name = self.v_ddns_name.get().strip()
+        err = ddns.validate_name(name)
+        if err:
+            messagebox.showwarning(APP_TITLE, err)
+            return None
+        return name, self.v_ddns_suffix.get(), self.v_ddns_port.get().strip()
+
+    def act_ddns_check_free(self):
+        got = self._ddns_args()
+        if not got:
+            return
+        name, suffix, _port = got
+        host = ddns.full_name(name, suffix)
+        self._write_log(f"Looking up {host} …", "head")
+        free, detail = ddns.name_is_free(host)
+        self._write_log(("[ok] " if free else "[!] ") + detail,
+                        "ok" if free else "warn")
+
+    def act_ddns_apply(self):
+        got = self._ddns_args()
+        if not got:
+            return
+        name, suffix, port = got
+        public = self.v_ddns_public.get()
+        host = ddns.full_name(name, suffix)
+        if not messagebox.askokcancel(APP_TITLE, (
+                f"Register this branch as:\n\n    {host}\n\n"
+                f"watching {port} on the firewall at {self.f_host.get()}.\n\n"
+                f"Nothing else on the firewall changes.")):
+            return
+
+        def job(fg, log):
+            ddns.apply_ddns(fg, name, suffix, port, public, log)
+            log("")
+            log("Registration happens between the firewall and FortiGuard and "
+                "can take a few minutes. Press 'Check it works' to confirm.",
+                "warn")
+        self._run("Register the branch name", job)
+
+    def act_ddns_verify(self):
+        got = self._ddns_args()
+        if not got:
+            return
+        name, suffix, port = got
+
+        def job(fg, log):
+            results = ddns.verify(fg, name, suffix, port)
+            passed = sum(1 for _, ok, _ in results if ok)
+            for label, ok, detail in results:
+                log(f"  [{'PASS' if ok else 'FAIL'}] {label:<34} {detail}",
+                    "ok" if ok else "fail")
+            log("")
+            log(f"RESULT: {passed}/{len(results)} checks passed",
+                "ok" if passed == len(results) else "warn")
+            wan = ddns.wan_address(fg, port)
+            if wan and ddns.is_private(wan):
+                log("")
+                log(f"[!] {port} holds {wan}, which is a private address. The "
+                    f"ISP is putting this site behind their own NAT, so head "
+                    f"office will not be able to dial in. The tunnel still "
+                    f"works because the branch always dials out.", "warn")
+        self._run("Check the branch name", job)
+
+    def act_ddns_show(self):
+        def job(fg, log):
+            entries = ddns.read_ddns(fg)
+            if not entries:
+                log("No dynamic DNS is registered on this firewall.", "warn")
+                return
+            log(f"Dynamic DNS on {self.f_host.get()}:", "head")
+            for e in entries:
+                ip = ddns.resolve(e["domain"])
+                log(f"  #{e['ddnsid']}  {e['domain']:<34} {e['server']:<16} "
+                    f"{', '.join(e['ports']) or '(no port)':<10} "
+                    f"resolves to {ip or 'nothing yet'}")
+        self._run("Show dynamic DNS", job)
+
+    # ---- VPN tunnel ------------------------------------------------------
+    def _vpn_checked(self):
+        spec = self.vpn_spec()
+        errs = vpn.validate(spec)
+        if errs:
+            messagebox.showwarning(APP_TITLE, "Please fix:\n\n- " + "\n- ".join(errs))
+            return None
+        return spec
+
+    def act_vpn_preview(self):
+        spec = self.vpn_spec()
+        errs = vpn.validate(spec)
+
+        def job(fg, log):
+            try:
+                locals_ = vpn.local_selectors(fg, spec.inside_ports)
+            except FortiGateError as e:
+                log(f"[!] {e}", "fail")
+                return
+            self.q.put(("vpn_local", "This branch would send: " + ", ".join(
+                f"{p} ({s})" for p, s in locals_)))
+            log("This branch's networks, read from the firewall:", "head")
+            for p, s in locals_:
+                log(f"  {p:<12} {s}")
+            for w in vpn.check_overlap(fg, spec):
+                log(f"[!] {w}", "fail")
+            if errs:
+                log("")
+                log("Cannot build it yet:", "head")
+                for e in errs:
+                    log(f"  - {e}", "warn")
+                return
+            log("")
+            log("What Apply would create:", "head")
+            for label, verdict in vpn.preview(fg, spec):
+                log(f"  {label}  ->  {verdict}",
+                    "warn" if verdict.startswith("would") else "ok")
+        self._run("Preview the tunnel", job)
+
+    def act_vpn_apply(self):
+        spec = self._vpn_checked()
+        if not spec:
+            return
+        if not messagebox.askokcancel(APP_TITLE, (
+                f"Build the tunnel '{spec.tunnel}' to {spec.remote_ddns}?\n\n"
+                f"Out via {spec.wan_port}. Networks allowed across: "
+                f"{', '.join(spec.inside_ports)}.\n"
+                f"Head office networks: {', '.join(spec.remote_subnets)}.\n\n"
+                f"Guest WiFi is not included and cannot be.\n\n"
+                f"Head office must have its matching end with the same key.")):
+            return
+
+        def job(fg, log):
+            for w in vpn.check_overlap(fg, spec):
+                log(f"[!] {w}", "fail")
+            vpn.apply_vpn(fg, spec, log)
+        self._run("Build the tunnel", job)
+
+    def act_vpn_status(self):
+        name = vpn.tunnel_name(self.v_vpn_branch.get().strip())
+
+        def job(fg, log):
+            up, detail = vpn.tunnel_status(fg, name)
+            log(f"{name}: {detail}", "ok" if up else "warn")
+        self._run("Check the tunnel", job)
+
+    def act_vpn_verify(self):
+        spec = self.vpn_spec()
+        if not spec.branch_name:
+            messagebox.showwarning(APP_TITLE, "Enter the branch name first.")
+            return
+
+        def job(fg, log):
+            results = vpn.verify(fg, spec)
+            passed = sum(1 for _, ok, _ in results if ok)
+            for label, ok, detail in results:
+                log(f"  [{'PASS' if ok else 'FAIL'}] {label:<34} {detail}",
+                    "ok" if ok else "fail")
+            log("")
+            log(f"RESULT: {passed}/{len(results)} checks passed",
+                "ok" if passed == len(results) else "warn")
+        self._run("Verify the tunnel", job)
+
+    def act_vpn_remove(self):
+        name = self.v_vpn_branch.get().strip()
+        if not name:
+            messagebox.showwarning(APP_TITLE, "Enter the branch name first.")
+            return
+        if not messagebox.askokcancel(APP_TITLE, (
+                f"Remove the tunnel '{vpn.tunnel_name(name)}' and everything "
+                f"built with it — selectors, addresses, groups, both policies "
+                f"and the routes?\n\nHead office will lose its link to this "
+                f"branch.")):
+            return
+        self._run("Remove the tunnel",
+                  lambda fg, log: vpn.remove_vpn(fg, name, log))
 
     def act_lan(self):
         spec = self.spec_from_form()

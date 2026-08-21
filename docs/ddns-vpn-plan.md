@@ -1,7 +1,9 @@
 # DDNS + VPN tabs — implementation plan (v1.2)
 
-> **Status: PLANNED, NOTHING BUILT.** No code has been written and nothing has
-> been sent to a FortiGate. Written 2026-08-17 with no device reachable, so
+> **Status 2026-08-21: phases 1-3 BUILT, phase 4 (bench test) NOT DONE.**
+> `fortigate/ddns.py`, `fortigate/vpn.py`, GUI tabs 6 and 7 and the two CLI
+> scripts exist and pass their stub tests. Nothing has been sent to a real
+> FortiGate. Written 2026-08-17 with no device reachable, so
 > every API body below comes from documentation, not from a live unit.
 >
 > Visual version of this plan: `docs/ddns-vpn-plan.html`

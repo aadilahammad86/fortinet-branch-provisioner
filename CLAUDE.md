@@ -79,6 +79,8 @@ script or to the GUI, add it to the package.
 | `fortigate/client.py` | `FortiGate` class: login, CSRF, `call/get/results/upsert`, `status()`, `backup()`. The one copy of the connection code that used to be duplicated in all 9 scripts. |
 | `fortigate/branch.py` | `BranchSpec` dataclass, `validate()`, `compute_range()`, interface/DHCP/policy/wan1/LAN functions, `provision()`, `preview()` (dry run), `verify()`. |
 | `fortigate/utm.py` | Blocked-URL list, category IDs, `apply_filters()`, `clear_filters()`, `verify_filters()`, `licence_state()`. |
+| `fortigate/ddns.py` | FortiGuard DDNS: register `<branch>.fortidyndns.com`, resolve it back, compare with the WAN address. |
+| `fortigate/vpn.py` | The HO tunnel: phase1/phase2, addresses, groups, policies, routes incl. the blackhole. |
 | `fortigate/templates.py` | Saved-branch library: one JSON file per branch in `branches/` (beside the .exe, git-ignored). `save/load/load_spec/delete/list_names/summaries/export_file/import_file`. Strips `pppoe_pass` and every other secret; ignores unknown keys on load so old files still work. |
 | `branch_gui.py` | Tkinter GUI. Worker thread + queue; never call the device on the UI thread. |
 | `build_exe.py` | PyInstaller build. `--onedir` by default (fewer AV false positives). |
@@ -183,39 +185,38 @@ NATed out wan1). What remains from this design is the VPN back to HO.
 - **Guest WiFi = internet only**, isolated from LAN/Staff/VPN. ✅
 - **Web filter + application control** — built and scripted. ✅
 
-## HO VPN — DECISION REVERSED 2026-08-20: it is being built into the tool
+## HO VPN + DDNS -- BUILT 2026-08-21, NOT YET TESTED ON HARDWARE
 
-The earlier decision ("configured on-site by hand, never scripted, do not build
-it into the provisioner") **no longer holds**. The IT team asked for two new GUI
-tabs, so DDNS and the HO tunnel become part of the tool.
+Reverses the old "configured on-site by hand, never scripted" decision. Phases
+1-3 of `docs/ddns-vpn-plan.md` are implemented; **phase 4, the bench test, has
+not happened.** Nothing here has been sent to a real FortiGate -- every API
+body came from documentation and was proven only against stubs.
 
-**Read `docs/ddns-vpn-plan.md` before writing any of it** — it is the full
-implementation plan: exact API bodies, naming limits, validation, phases, the
-bench-test gate and the open decisions. `docs/ddns-vpn-plan.html` is the same
-plan laid out visually; `docs/reference/*.png` are the HO screenshots it was
-designed from.
+| Piece | Where |
+|---|---|
+| DDNS engine | `fortigate/ddns.py` -- `apply_ddns`, `verify`, `resolve`, `name_is_free`, `wan_address` |
+| VPN engine | `fortigate/vpn.py` -- `VpnSpec`, `validate`, `preview`, `apply_vpn`, `verify`, `tunnel_status`, `remove_vpn` |
+| GUI | tabs 6 (Dynamic DNS) and 7 (VPN Tunnel) |
+| CLI | `scripts/configure-ddns.py`, `scripts/configure-vpn.py` |
 
-Status as of 2026-08-20: **planned, nothing built.** No code, nothing sent to a
-device. The plan was written with no FortiGate reachable, so every API body in
-it is from documentation and must be proven on the bench unit.
+Rules the code enforces, do not weaken them:
 
-Shape of it, in one paragraph: both ends have dynamic ISP addresses, so each
-finds the other by DDNS name. HO is already `homadina.fortidyndns.com`. Tab 6
-registers `<branch>.fortidyndns.com` for this unit; tab 7 builds an IPsec
-tunnel (`<branch>toHO`, type `ddns`) to HO's name, with phase-2 selectors,
-policies and routes for **LAN and Staff only — never Guest**, plus a blackhole
-route so HO traffic fails rather than leaking out the internet when the tunnel
-is down. The branch always initiates (`auto-negotiate` + `keepalive`), because a
-branch behind CGNAT can never be dialled.
+- **Two independent names.** DDNS name max 24; VPN branch name max 11 because
+  `<name>toHO` must fit FortiGate's 15-character interface-name limit. The GUI
+  refuses the 12th character. Neither field copies from the other.
+- **Guest never crosses.** `vpn.GUEST_PORTS` is refused in `local_selectors()`
+  and in `validate()`, not merely unticked in the GUI.
+- **The branch always dials** -- phase2 `auto-negotiate` + `keepalive`, phase1
+  `dpd on-idle`. A branch behind CGNAT registers an address HO cannot reach, so
+  the design never depends on HO initiating.
+- **The blackhole route is not optional.** Without it, HO traffic falls to the
+  default route when the tunnel drops and leaves the branch unencrypted.
+- **Local subnets are read from the device**, never from the form -- only the
+  firewall knows what its ports are really addressed as.
 
-Two independent name fields, by decision: the DNS name (max 24) and the VPN
-branch name (max 11, because `<name>toHO` must fit FortiGate's 15-character
-interface-name limit). Neither field copies from the other.
-
-**Before starting, four answers are needed** (full list in the plan):
-HO's subnets; HO's IKE version and proposals; one PSK per branch or one for the
-estate; and whether "incoming internet port" meant the wizard's two interface
-pickers or a second WAN for failover.
+Still open before it can be trusted: HO's real subnets, HO's IKE version and
+proposals (defaults are IKEv2 / aes256-sha256 aes128-sha256 / DH14), and
+whether the PSK is per branch or estate-wide. See the end of the plan.
 
 ## Still open
 
