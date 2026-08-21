@@ -12,7 +12,7 @@ big goal is a **VPN from every branch back to Head Office (HO)**.
 
 ## Where things stand (updated 2026-08-20)
 
-**Released:** v1.2.1 on GitHub — the expanded blocked-site list (social media,
+**Released:** v1.2.2 on GitHub — the expanded blocked-site list (social media,
 messaging except WhatsApp, Malayalam + Gulf news, job sites) and the
 "Update blocked sites now" action for a firewall that is already running.
 v1.1 before it was the saved-branch templates.

@@ -33,7 +33,7 @@ from fortigate import branch, templates, utm
 from fortigate.templates import TemplateError
 
 APP_TITLE = "FortiGate Branch Provisioner"
-APP_VERSION = "1.2.1"
+APP_VERSION = "1.2.2"
 
 
 def app_dir():
@@ -547,12 +547,15 @@ class App(tk.Tk):
         # Add a whole category at a time rather than typing 130 lines.
         add = ttk.Frame(urls)
         add.pack(fill="x", pady=(6, 0))
-        ttk.Label(add, text="Add a group:").grid(row=0, column=0, columnspan=2,
-                                                 sticky="w")
+        ttk.Label(add, text="Add a group:").grid(row=0, column=0, sticky="w")
+        # One full-width column: a fixed character width clipped the longer
+        # names ("Malayalam and Gulf news"), and a button nobody can read is
+        # worse than a taller panel.
+        add.columnconfigure(0, weight=1)
         for i, (key, label, group) in enumerate(utm.URL_GROUPS):
-            b = ttk.Button(add, text=label.split(" (")[0], width=16,
+            b = ttk.Button(add, text=f"{label.split(' (')[0]}  ({len(group)})",
                            command=lambda k=key: self._add_url_group(k))
-            b.grid(row=1 + i // 2, column=i % 2, sticky="w", padx=(0, 6), pady=2)
+            b.grid(row=1 + i, column=0, sticky="ew", pady=2)
             Tooltip(b, f"Add the {len(group)} entries for {label}.\n"
                        f"Sites already in the list are not added twice.")
 
