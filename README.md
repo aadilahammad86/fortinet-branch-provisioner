@@ -161,9 +161,28 @@ Each branch gets **one ISP** (`wan1`) and **three inside networks**:
 
 `scripts/configure-utm-filters.py` applies, to the LAN and Staff WiFi only:
 
-- **Web filter** — static URL list blocking Facebook and YouTube
-  (`facebook.com`, `*.facebook.com`, `*.fbcdn.net`, `youtube.com`,
-  `*.youtube.com`, `youtu.be`, `*.googlevideo.com`).
+- **Web filter** — a static URL list of **133 entries in five groups**
+  (`utm.URL_GROUPS`): social media, messaging apps, video sharing, Malayalam +
+  Gulf news, job hunting. **WhatsApp is explicitly allowed** — `utm.ALLOW_URLS`
+  is written as `allow` rows above every block row, because the FortiGate takes
+  the first match walking the table.
+
+### Changing the list on a live branch
+
+`utm.update_urls()` rewrites *only* the URL table — no interfaces, policies or
+application control — so a blocklist change is safe to push to a running
+branch. Two front ends:
+
+```
+# GUI:  Filtering tab -> "Update blocked sites now"
+python scripts/configure-utm-filters.py --list-groups
+python scripts/configure-utm-filters.py --update-urls                 # standard list
+python scripts/configure-utm-filters.py --update-urls --groups social,jobs
+python scripts/configure-utm-filters.py --update-urls --from-file sites.txt
+```
+
+It refuses if the firewall has no `Branch-WebFilter` profile to attach to,
+rather than silently saving a list nothing uses.
 - **Application control** — blocks category **7 Remote.Access** (Teamviewer,
   AnyDesk, RDP, VNC, …) and **23 Social.Media** (Facebook, Instagram,
   Twitter, …). Everything else passes.

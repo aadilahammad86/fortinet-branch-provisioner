@@ -12,10 +12,13 @@ big goal is a **VPN from every branch back to Head Office (HO)**.
 
 ## Where things stand (updated 2026-08-20)
 
-**Released:** v1.1 on GitHub — the saved-branch templates. Latest tag `v1.1`,
-release carries `FortiGate-Branch-Provisioner-v1.1-portable.exe`.
+**Released:** v1.2 on GitHub — the expanded blocked-site list (social media,
+messaging except WhatsApp, Malayalam + Gulf news, job sites) and the
+"Update blocked sites now" action for a firewall that is already running.
+v1.1 before it was the saved-branch templates.
 
-**In flight:** the **Dynamic DNS** and **VPN Tunnel** tabs (v1.2). Planned in
+**In flight:** the **Dynamic DNS** and **VPN Tunnel** tabs (now v1.3, since
+v1.2 went to the blocklist work). Planned in
 full, nothing built. Start at `docs/ddns-vpn-plan.md`; the decision context is
 under "HO VPN" below. Four answers are needed before coding starts — they are
 listed at the end of the plan.
@@ -115,9 +118,16 @@ form, the CLI flags, saved profiles, `preview()` and `verify()` all speak it.
 - **Guest isolation is by omission** — Guest WiFi has only its wan1 policy, so
   default deny keeps it off LAN/Staff/VPN. Do not add guest→inside policies.
 - **Web filter `Branch-WebFilter`** (static URL table `Branch-Blocked-Sites`,
-  id 1): blocks `facebook.com`, `*.facebook.com`, `*.fbcdn.net`, `youtube.com`,
-  `*.youtube.com`, `youtu.be`, `*.googlevideo.com`. Static list, **not**
-  FortiGuard categories — works with no licence.
+  id 1). Since v1.2 the list is **133 entries in five named groups** defined in
+  `fortigate/utm.py` as `URL_GROUPS`: social media, messaging apps, video
+  sharing, Malayalam + Gulf news, job hunting. Static list, **not** FortiGuard
+  categories — works with no licence.
+  **WhatsApp is deliberately allowed**: `ALLOW_URLS` is written as `allow` rows
+  with ids 1-4, above every block row, because the FortiGate takes the first
+  match walking the table. Never add a whatsapp domain to a block group.
+  `utm.update_urls()` rewrites *only* this table — the action behind the GUI's
+  "Update blocked sites now" and `configure-utm-filters.py --update-urls`, for
+  changing the list on a live branch without touching anything else.
 - **App control `Branch-AppControl`**: blocks category **7 = Remote.Access**
   and **23 = Social.Media** (IDs verified against this unit's signature DB).
   Everything else passes.

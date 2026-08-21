@@ -157,12 +157,54 @@ every device.
 
 ### Blocked websites
 
-A plain list, one site per line. The defaults block Facebook and YouTube,
-including the extra addresses those two use behind the scenes — without those,
-the sites half-load instead of being blocked.
+A plain list, one site per line. The standard list is **133 entries** covering
+five groups:
+
+| Group | What it blocks |
+|---|---|
+| **Social media** | Facebook, Instagram, Threads, X/Twitter, TikTok, Snapchat, Reddit, Pinterest, Tumblr, ShareChat, Likee |
+| **Messaging apps** | Telegram, IMO, Line, Messenger, Signal, Viber, WeChat, Botim, Discord, Skype |
+| **Video sharing** | YouTube |
+| **Malayalam and Gulf news** | MediaOne, Madhyamam, Reporter, 24 News, Manorama, Mathrubhumi, Asianet, Kerala Kaumudi, Deshabhimani, Marunadan, Deepika, Gulf News, Khaleej Times |
+| **Job hunting** | LinkedIn, Indeed, Naukri, NaukriGulf, Bayt, GulfTalent, Foundit, Monster, Shine, TimesJobs, Glassdoor |
+
+> ### WhatsApp is always allowed
+> It is never in the block list, and the program writes it to the firewall as an
+> explicit **allow** rule sitting above every block rule — so no wildcard can
+> catch it by accident. You can see those four entries at the top of the URL
+> table in the FortiGate's own screen.
+
+**Add a group** puts a whole category into the list in one press; sites already
+there are not added twice. **Reset to standard list** puts all five groups back.
+**Clear** empties the box so you can build your own list.
 
 Add or remove lines freely. Use `*.example.com` to cover everything under a
-domain, and `example.com` on its own line for the bare address.
+domain, and `example.com` on its own line for the bare address. Each group's
+list includes the extra addresses these services load content from — without
+those a site half-loads instead of being blocked.
+
+### Changing the list on a branch that is already running
+
+At the bottom of the tab: **Update blocked sites now**.
+
+This sends **only** the website list to the firewall on the Connect tab. No
+interfaces, no DHCP, no policies, no application control — nothing else is
+touched, so it is safe during working hours. The new list applies immediately;
+nobody needs to reconnect and nothing restarts.
+
+The normal routine for adding a site to every branch:
+
+1. Connect to the branch (Tab 1) and press **Test connection**
+2. On **Filtering**, add the site to the list — or press **Add a group**
+3. Press **Check what is blocked** to see exactly what would change
+4. Press **Update blocked sites now**
+
+**Check what is blocked** reads the firewall's current list and shows the
+difference line by line — what would be added, what would be removed — without
+changing anything.
+
+> If the firewall has never had a full **Apply**, there is no web filter for the
+> list to attach to. The program says so rather than pretending it worked.
 
 ### Blocked application categories
 
@@ -178,6 +220,12 @@ Everything not ticked is allowed.
 > **YouTube is in Video/Audio, not Social.Media.** The website list is what
 > blocks YouTube. If you ever need to unblock it, remove the `youtube.com`,
 > `*.youtube.com`, `youtu.be` and `*.googlevideo.com` lines.
+
+> **Websites versus phone apps.** The website list stops the sites in a browser.
+> A phone app that talks straight to its own servers is stopped by the
+> **Social.Media** category above, not by the list. Both are on by default, so
+> between them Telegram, Instagram and the rest are covered on phones as well as
+> on PCs.
 
 > **Remote.Access includes RDP.** Staff will not be able to remote-desktop to
 > anything on the public internet. This does not affect head office connecting

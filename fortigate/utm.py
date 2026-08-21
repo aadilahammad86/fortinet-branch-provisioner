@@ -19,18 +19,100 @@ URLFILTER_NAME = "Branch-Blocked-Sites"
 WEBFILTER_PROFILE = "Branch-WebFilter"
 APPLIST_NAME = "Branch-AppControl"
 
-# Facebook and YouTube, plus the CDN domains those two services stream from --
-# without those the sites partly load. `wildcard` covers subdomains; the bare
-# domain needs its own `simple` entry.
-DEFAULT_URLS = [
-    ("facebook.com", "simple"),
-    ("*.facebook.com", "wildcard"),
-    ("*.fbcdn.net", "wildcard"),          # Facebook static content / images
-    ("youtube.com", "simple"),
-    ("*.youtube.com", "wildcard"),
-    ("youtu.be", "simple"),
-    ("*.googlevideo.com", "wildcard"),    # YouTube video streams
+# ---- what gets blocked -------------------------------------------------
+# Grouped so the GUI can offer them a group at a time and so it is obvious
+# what a line is for. A bare domain needs a `simple` entry; subdomains need
+# their own `*.` wildcard. CDN domains matter -- without them a site half
+# loads and looks broken rather than blocked.
+#
+# WhatsApp is deliberately absent from every block group and is explicitly
+# allowed below: it is the one messaging platform the business relies on.
+URL_GROUPS = [
+    ("social", "Social media", [
+        "facebook.com", "*.facebook.com", "*.fbcdn.net", "fb.watch",
+        "instagram.com", "*.instagram.com", "*.cdninstagram.com",
+        "threads.net", "*.threads.net", "threads.com", "*.threads.com",
+        "twitter.com", "*.twitter.com", "x.com", "*.x.com", "*.twimg.com",
+        "t.co",
+        "tiktok.com", "*.tiktok.com", "*.tiktokcdn.com", "*.tiktokv.com",
+        "snapchat.com", "*.snapchat.com", "*.sc-cdn.net",
+        "reddit.com", "*.reddit.com", "*.redd.it",
+        "pinterest.com", "*.pinterest.com", "*.pinimg.com",
+        "tumblr.com", "*.tumblr.com",
+        "sharechat.com", "*.sharechat.com",
+        "likee.video", "*.likee.video",
+    ]),
+    ("messaging", "Messaging apps (WhatsApp stays allowed)", [
+        "telegram.org", "*.telegram.org", "telegram.me", "*.telegram.me",
+        "t.me", "telesco.pe", "*.telesco.pe",
+        "imo.im", "*.imo.im",
+        "line.me", "*.line.me", "*.line-apps.com", "*.line-scdn.net",
+        "messenger.com", "*.messenger.com", "m.me",
+        "signal.org", "*.signal.org",
+        "viber.com", "*.viber.com",
+        "wechat.com", "*.wechat.com", "weixin.qq.com",
+        "botim.me", "*.botim.me",
+        "discord.com", "*.discord.com", "discord.gg",
+        "*.discordapp.com", "*.discordapp.net",
+        "skype.com", "*.skype.com",
+    ]),
+    ("video", "Video sharing", [
+        "youtube.com", "*.youtube.com", "youtu.be",
+        "*.googlevideo.com", "*.ytimg.com",
+    ]),
+    ("news", "Malayalam and Gulf news", [
+        "mediaoneonline.com", "*.mediaoneonline.com",
+        "madhyamam.com", "*.madhyamam.com",
+        "reporterlive.com", "*.reporterlive.com",
+        "twentyfournews.com", "*.twentyfournews.com",
+        "manoramaonline.com", "*.manoramaonline.com",
+        "manoramanews.com", "*.manoramanews.com",
+        "onmanorama.com", "*.onmanorama.com",
+        "mathrubhumi.com", "*.mathrubhumi.com",
+        "asianetnews.com", "*.asianetnews.com",
+        "keralakaumudi.com", "*.keralakaumudi.com",
+        "deshabhimani.com", "*.deshabhimani.com",
+        "marunadanmalayalee.com", "*.marunadanmalayalee.com",
+        "deepika.com", "*.deepika.com",
+        "malayalam.news18.com",
+        "gulfnews.com", "*.gulfnews.com",
+        "khaleejtimes.com", "*.khaleejtimes.com",
+    ]),
+    ("jobs", "Job hunting", [
+        "linkedin.com", "*.linkedin.com", "*.licdn.com",
+        "indeed.com", "*.indeed.com", "indeed.ae", "*.indeed.ae",
+        "naukri.com", "*.naukri.com",
+        "naukrigulf.com", "*.naukrigulf.com",
+        "bayt.com", "*.bayt.com",
+        "gulftalent.com", "*.gulftalent.com",
+        "foundit.in", "*.foundit.in", "foundit.ae", "*.foundit.ae",
+        "monstergulf.com", "*.monstergulf.com",
+        "monster.com", "*.monster.com",
+        "shine.com", "*.shine.com",
+        "timesjobs.com", "*.timesjobs.com",
+        "glassdoor.com", "*.glassdoor.com",
+    ]),
 ]
+
+# Written as `allow` entries ABOVE every block entry, so no wildcard can ever
+# catch WhatsApp by accident and it is visible in the FortiGate GUI that the
+# exception is deliberate rather than an oversight.
+ALLOW_URLS = [
+    "whatsapp.com", "*.whatsapp.com", "whatsapp.net", "*.whatsapp.net",
+]
+
+GROUP_LABELS = {key: label for key, label, _ in URL_GROUPS}
+
+
+def group_urls(key):
+    for k, _label, urls in URL_GROUPS:
+        if k == key:
+            return list(urls)
+    return []
+
+
+DEFAULT_URLS = [(u, "wildcard" if "*" in u else "simple")
+                for _k, _l, urls in URL_GROUPS for u in urls]
 
 DEFAULT_CATEGORIES = [(7, "Remote.Access"), (23, "Social.Media")]
 
@@ -65,24 +147,97 @@ def spec_categories(spec):
     return list(DEFAULT_CATEGORIES)
 
 
+def url_entries(urls):
+    """Build the URL-filter rows: the WhatsApp allows first, then the blocks.
+
+    Order matters -- the FortiGate walks this table and takes the first match,
+    so the allow rows have to sit above every wildcard that could swallow them.
+
+    `urls` may be plain strings or (url, type) pairs; the type is derived when
+    it is not given, so callers never have to think about simple vs wildcard.
+    """
+    urls = [(u, _url_type(u)) if isinstance(u, str) else u for u in urls]
+    rows = [
+        {"id": i, "url": u, "type": _url_type(u), "action": "allow",
+         "status": "enable"}
+        for i, u in enumerate(ALLOW_URLS, start=1)
+    ]
+    rows += [
+        {"id": i, "url": url, "type": typ, "action": "block",
+         "status": "enable", "exempt": "av"}
+        for i, (url, typ) in enumerate(urls, start=len(rows) + 1)
+    ]
+    return rows
+
+
+def blocked_only(entries):
+    """The block rows of a table read off the device, ignoring the allows."""
+    return [e for e in entries if e.get("action") == "block"]
+
+
+def update_urls(fg, urls, log=_noop):
+    """Rewrite ONLY the blocked-site list on a firewall that is already set up.
+
+    Touches nothing else -- no interfaces, no policies, no application control.
+    The profile is already attached to the policies, so the new list takes
+    effect the moment the table is written. Safe to run against a live branch.
+    """
+    entries = url_entries(urls)
+    state = fg.upsert("/api/v2/cmdb/webfilter/urlfilter", URLFILTER_ID, {
+        "id": URLFILTER_ID, "name": URLFILTER_NAME,
+        "comment": "Branch standard blocked sites",
+        "entries": entries,
+    })
+    got = fg.results(f"/api/v2/cmdb/webfilter/urlfilter/{URLFILTER_ID}")[0]
+    live = got.get("entries", [])
+    if len(live) != len(entries):
+        raise FortiGateError(
+            f"URL list did not stick: sent {len(entries)} entries, the device "
+            f"reports {len(live)}.")
+    log(f"[ok] blocked-site list {state}: {len(blocked_only(live))} sites blocked, "
+        f"{len(ALLOW_URLS)} WhatsApp entries allowed")
+
+    # The profile must exist and point at this table, or the list is inert.
+    try:
+        wf = fg.results(f"/api/v2/cmdb/webfilter/profile/{WEBFILTER_PROFILE}")[0]
+    except (FortiGateError, IndexError):
+        raise FortiGateError(
+            f"No web filter profile '{WEBFILTER_PROFILE}' on this firewall. "
+            f"The list was saved but nothing uses it -- run a full Apply first.")
+    if (wf.get("web") or {}).get("urlfilter-table") != URLFILTER_ID:
+        fg.call("PUT", f"/api/v2/cmdb/webfilter/profile/{WEBFILTER_PROFILE}",
+                {"web": {"urlfilter-table": URLFILTER_ID}})
+        log(f"[ok] profile '{WEBFILTER_PROFILE}' repointed at table "
+            f"#{URLFILTER_ID}")
+
+    # Report, do not touch: which policies actually enforce this.
+    using = [p.get("name") or f"#{p.get('policyid')}"
+             for p in fg.results("/api/v2/cmdb/firewall/policy")
+             if p.get("webfilter-profile") == WEBFILTER_PROFILE
+             and p.get("utm-status") == "enable"]
+    if using:
+        log(f"[ok] live on {len(using)} polic{'y' if len(using) == 1 else 'ies'}: "
+            f"{', '.join(using)}")
+    else:
+        log("[!] no policy currently uses this web filter -- the list is saved "
+            "but nothing is being blocked. Run a full Apply to attach it.", )
+    return len(blocked_only(live))
+
+
 def apply_filters(fg, spec, log=_noop):
     """Create the UTM objects and attach them to the in-scope policies."""
     scope = spec.filtered_ports()
 
     if spec.web_filter:
-        urls = spec_urls(spec)
-        entries = [
-            {"id": i, "url": url, "type": typ, "action": "block",
-             "status": "enable", "exempt": "av"}
-            for i, (url, typ) in enumerate(urls, start=1)
-        ]
+        entries = url_entries(spec_urls(spec))
         state = fg.upsert("/api/v2/cmdb/webfilter/urlfilter", URLFILTER_ID, {
             "id": URLFILTER_ID, "name": URLFILTER_NAME,
             "comment": "Branch standard blocked sites",
             "entries": entries,
         })
         log(f"[ok] URL filter table #{URLFILTER_ID} '{URLFILTER_NAME}' "
-            f"({len(entries)} entries) {state}")
+            f"({len(blocked_only(entries))} blocked, {len(ALLOW_URLS)} allowed) "
+            f"{state}")
 
         state = fg.upsert("/api/v2/cmdb/webfilter/profile", WEBFILTER_PROFILE, {
             "name": WEBFILTER_PROFILE,
@@ -171,13 +326,15 @@ def verify_filters(fg, spec):
             out.append(("URL filter table exists", False, "MISSING"))
         else:
             check("URL filter name", uf.get("name"), URLFILTER_NAME)
+            rows = uf.get("entries", [])
             want = sorted(u for u, _ in spec_urls(spec))
-            check("URL filter entries", sorted(e.get("url") for e in uf.get("entries", [])),
+            check("blocked sites", sorted(e.get("url") for e in blocked_only(rows)),
                   want)
-            check("URL entries all block",
-                  sorted({e.get("action") for e in uf.get("entries", [])}), ["block"])
+            check("WhatsApp allowed",
+                  sorted(e.get("url") for e in rows if e.get("action") == "allow"),
+                  sorted(ALLOW_URLS))
             check("URL entries all enabled",
-                  sorted({e.get("status") for e in uf.get("entries", [])}), ["enable"])
+                  sorted({e.get("status") for e in rows}), ["enable"])
         try:
             wf = fg.results(f"/api/v2/cmdb/webfilter/profile/{WEBFILTER_PROFILE}")[0]
             check("web filter -> URL table",

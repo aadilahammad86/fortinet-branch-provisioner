@@ -44,13 +44,50 @@ def main():
     ap.add_argument("--staff-port", default="internal2")
     ap.add_argument("--off", action="store_true",
                     help="remove filtering from the in-scope policies")
+    ap.add_argument("--update-urls", action="store_true",
+                    help="send ONLY the blocked-site list to an already-configured "
+                         "firewall; touches no interfaces, policies or app control")
+    ap.add_argument("--from-file", metavar="PATH",
+                    help="with --update-urls: read the sites from a text file, "
+                         "one per line (default: the built-in standard list)")
+    ap.add_argument("--groups", metavar="A,B",
+                    help="with --update-urls: only these groups, e.g. "
+                         + ",".join(k for k, _, _ in utm.URL_GROUPS))
+    ap.add_argument("--list-groups", action="store_true",
+                    help="print the built-in site groups and exit")
     ap.add_argument("--verify", action="store_true")
     args = ap.parse_args()
+
+    if args.list_groups:
+        for key, label, urls in utm.URL_GROUPS:
+            print(f"  {key:<10} {label:<42} {len(urls):>3} entries")
+        print(f"  {'':<10} {'always allowed: ' + ', '.join(utm.ALLOW_URLS)}")
+        return
 
     cfg = load_env()
     fg = FortiGate(cfg["FGT_HOST"], cfg["FGT_USER"], cfg["FGT_PASSWORD"])
     spec = branch.BranchSpec(lan_port=args.lan_port, staff_port=args.staff_port,
                              ssl_mode=args.ssl)
+
+    if args.update_urls:
+        if args.from_file:
+            urls = [ln.strip() for ln in
+                    Path(args.from_file).read_text(encoding="utf-8").splitlines()
+                    if ln.strip() and not ln.startswith("#")]
+        elif args.groups:
+            urls = []
+            for key in [g.strip() for g in args.groups.split(",") if g.strip()]:
+                got = utm.group_urls(key)
+                if not got:
+                    raise SystemExit(f"[!] unknown group '{key}'. "
+                                     f"Try --list-groups.")
+                urls += got
+        else:
+            urls = [u for u, _ in utm.DEFAULT_URLS]
+        print(f"Updating the blocked-site list on {cfg['FGT_HOST']} "
+              f"({len(urls)} sites):")
+        utm.update_urls(fg, urls, lambda m: print(f"  {m}"))
+        return
 
     if args.off:
         print("Removing branch UTM filters:")

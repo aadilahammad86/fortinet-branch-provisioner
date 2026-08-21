@@ -33,7 +33,7 @@ from fortigate import branch, templates, utm
 from fortigate.templates import TemplateError
 
 APP_TITLE = "FortiGate Branch Provisioner"
-APP_VERSION = "1.1"
+APP_VERSION = "1.2"
 
 
 def app_dir():
@@ -539,8 +539,34 @@ class App(tk.Tk):
                                                    font=("Consolas", 9))
         self.urls_text.pack(fill="both", expand=True)
         self.urls_text.insert("1.0", "\n".join(u for u, _ in utm.DEFAULT_URLS))
-        ttk.Button(urls, text="Reset to defaults",
-                   command=self._reset_urls).pack(anchor="w", pady=(6, 0))
+
+        self.url_count = ttk.Label(urls, foreground="#666", text="")
+        self.url_count.pack(anchor="w", pady=(4, 0))
+        self.urls_text.bind("<KeyRelease>", lambda _e: self._count_urls())
+
+        # Add a whole category at a time rather than typing 130 lines.
+        add = ttk.Frame(urls)
+        add.pack(fill="x", pady=(6, 0))
+        ttk.Label(add, text="Add a group:").grid(row=0, column=0, columnspan=2,
+                                                 sticky="w")
+        for i, (key, label, group) in enumerate(utm.URL_GROUPS):
+            b = ttk.Button(add, text=label.split(" (")[0], width=16,
+                           command=lambda k=key: self._add_url_group(k))
+            b.grid(row=1 + i // 2, column=i % 2, sticky="w", padx=(0, 6), pady=2)
+            Tooltip(b, f"Add the {len(group)} entries for {label}.\n"
+                       f"Sites already in the list are not added twice.")
+
+        row = ttk.Frame(urls)
+        row.pack(fill="x", pady=(8, 0))
+        ttk.Button(row, text="Reset to standard list",
+                   command=self._reset_urls, width=21).pack(side="left")
+        ttk.Button(row, text="Clear", width=8,
+                   command=self._clear_urls).pack(side="left", padx=6)
+
+        ttk.Label(urls, style="Good.TLabel", wraplength=320, justify="left",
+                  text="WhatsApp is always allowed — it is written to the "
+                       "firewall as an explicit exception above every block "
+                       "rule.").pack(anchor="w", pady=(8, 0))
 
         cats = ttk.LabelFrame(body, text="Blocked application categories", padding=8)
         cats.pack(side="left", fill="both", expand=True, padx=(12, 0))
@@ -555,11 +581,66 @@ class App(tk.Tk):
         ttk.Label(f, wraplength=880, justify="left", style="Warn.TLabel", text=(
             "YouTube is in Video/Audio, not Social.Media — the website list is what "
             "blocks it. Remote.Access includes RDP, VNC and Telnet going out to the "
-            "internet.")).pack(anchor="w", pady=(10, 0))
+            "internet. Blocking a site here stops the website; phone apps that talk "
+            "to their own servers are stopped by the Social.Media category.")
+                  ).pack(anchor="w", pady=(10, 0))
+
+        # The everyday job: change the list on a branch that is already running.
+        upd = ttk.LabelFrame(f, text="Update a firewall that is already set up",
+                             padding=10)
+        upd.pack(fill="x", pady=(16, 0))
+        ttk.Label(upd, wraplength=860, justify="left", text=(
+            "Sends only the blocked-website list to the firewall on the Connect "
+            "tab. Nothing else is touched — no interfaces, no DHCP, no policies, "
+            "no application control — so this is safe to run on a live branch "
+            "during working hours. The new list takes effect immediately.")
+                  ).pack(anchor="w")
+        r = ttk.Frame(upd)
+        r.pack(fill="x", pady=(8, 0))
+        b = ttk.Button(r, text="Update blocked sites now", width=26,
+                       command=self.act_update_urls)
+        b.pack(side="left")
+        Tooltip(b, "Rewrite the blocked-site list on the connected firewall.\n"
+                   "Only that list changes.")
+        self.action_buttons.append(b)
+        b = ttk.Button(r, text="Check what is blocked", width=22,
+                       command=self.act_read_urls)
+        b.pack(side="left", padx=8)
+        Tooltip(b, "Read the list currently on the firewall and compare it with "
+                   "the box above. Changes nothing.")
+        self.action_buttons.append(b)
+
+        self._count_urls()
 
     def _reset_urls(self):
         self.urls_text.delete("1.0", "end")
         self.urls_text.insert("1.0", "\n".join(u for u, _ in utm.DEFAULT_URLS))
+        self._count_urls()
+
+    def _clear_urls(self):
+        self.urls_text.delete("1.0", "end")
+        self._count_urls()
+
+    def _url_lines(self):
+        return [ln.strip() for ln in
+                self.urls_text.get("1.0", "end").splitlines() if ln.strip()]
+
+    def _add_url_group(self, key):
+        have = set(self._url_lines())
+        fresh = [u for u in utm.group_urls(key) if u not in have]
+        if not fresh:
+            self._write_log(f"[skip] {utm.GROUP_LABELS[key]}: already in the list")
+            return
+        text = self.urls_text.get("1.0", "end").rstrip()
+        self.urls_text.delete("1.0", "end")
+        self.urls_text.insert("1.0", (text + "\n" if text else "") + "\n".join(fresh))
+        self._write_log(f"[ok] added {len(fresh)} entries for "
+                        f"{utm.GROUP_LABELS[key]}", "ok")
+        self._count_urls()
+
+    def _count_urls(self):
+        n = len(self._url_lines())
+        self.url_count.configure(text=f"{n} sites blocked  ·  WhatsApp allowed")
 
     # ---- tab 5: apply ---------------------------------------------------
     def _tab_apply(self):
@@ -990,6 +1071,59 @@ class App(tk.Tk):
                 + ("  — ALL GOOD" if passed == len(results) else "  — SEE FAILURES"),
                 "ok" if passed == len(results) else "fail")
         self._run("Verify configuration", job)
+
+    # ---- blocked-site list only -----------------------------------------
+    def act_update_urls(self):
+        urls = self._url_lines()
+        if not urls:
+            messagebox.showwarning(
+                APP_TITLE, "The blocked-website list is empty.\n\n"
+                           "Press 'Reset to standard list' or add a group first.")
+            return
+        if not messagebox.askokcancel(APP_TITLE, (
+                f"Send {len(urls)} blocked sites to the firewall at "
+                f"{self.f_host.get()}?\n\n"
+                f"WhatsApp stays allowed.\n\n"
+                f"Only the blocked-site list changes. Interfaces, DHCP, policies "
+                f"and application control are left exactly as they are.")):
+            return
+
+        def job(fg, log):
+            log(f"Updating the blocked-site list ({len(urls)} sites)…", "head")
+            utm.update_urls(fg, urls, log)
+            log("")
+            log("Done. The new list is live on every policy that uses the "
+                "branch web filter.", "ok")
+        self._run("Update blocked sites", job)
+
+    def act_read_urls(self):
+        want = set(self._url_lines())
+
+        def job(fg, log):
+            try:
+                uf = fg.results(
+                    f"/api/v2/cmdb/webfilter/urlfilter/{utm.URLFILTER_ID}")[0]
+            except (FortiGateError, IndexError):
+                log("[!] this firewall has no branch URL filter table yet — "
+                    "run a full Apply first.", "fail")
+                return
+            rows = uf.get("entries", [])
+            have = {e.get("url") for e in utm.blocked_only(rows)}
+            allowed = [e.get("url") for e in rows if e.get("action") == "allow"]
+            log(f"On the firewall: {len(have)} sites blocked, "
+                f"{len(allowed)} allowed ({', '.join(allowed) or 'none'})", "head")
+            missing = sorted(want - have)
+            extra = sorted(have - want)
+            for u in missing:
+                log(f"  [would add]    {u}", "warn")
+            for u in extra:
+                log(f"  [would remove] {u}", "warn")
+            if not missing and not extra:
+                log("  the firewall already matches the list in the box.", "ok")
+            else:
+                log(f"  {len(missing)} to add, {len(extra)} to remove — press "
+                    f"'Update blocked sites now' to apply.", "warn")
+        self._run("Check blocked sites", job)
 
     def act_lan(self):
         spec = self.spec_from_form()
