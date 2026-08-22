@@ -33,7 +33,7 @@ from fortigate import appctrl, branch, ddns, templates, utm, vpn
 from fortigate.templates import TemplateError
 
 APP_TITLE = "FortiGate Branch Provisioner"
-APP_VERSION = "1.3.0-rc2"
+APP_VERSION = "1.3.0-rc3"
 
 
 def app_dir():
@@ -857,6 +857,26 @@ class App(tk.Tk):
                    "the box above. Changes nothing.")
         self.action_buttons.append(b)
 
+        # A profile nothing references blocks nothing, and that is invisible
+        # from the profile screens -- so it gets its own check and its own fix.
+        r2 = ttk.Frame(upd)
+        r2.pack(fill="x", pady=(10, 0))
+        b = ttk.Button(r2, text="Is filtering switched on?", width=24,
+                       command=self.act_policy_state)
+        b.pack(side="left")
+        Tooltip(b, "Show every internet policy and whether it actually "
+                   "enforces the web filter and application control. "
+                   "Changes nothing.")
+        self.action_buttons.append(b)
+        b = ttk.Button(r2, text="Switch filtering ON", width=22,
+                       command=self.act_attach_filters)
+        b.pack(side="left", padx=8)
+        Tooltip(b, "Attach the web filter and application sensor to the "
+                   "office LAN and Staff WiFi internet policies.\n"
+                   "Only those policies' filtering fields change -- no "
+                   "interfaces, no DHCP, no addresses. Guest is left alone.")
+        self.action_buttons.append(b)
+
         self._count_urls()
 
     def _reset_urls(self):
@@ -1668,6 +1688,62 @@ class App(tk.Tk):
                 log(f"  {len(missing)} to add, {len(extra)} to remove — press "
                     f"'Update blocked sites now' to apply.", "warn")
         self._run("Check blocked sites", job)
+
+    # ---- is filtering actually switched on? ------------------------------
+    def act_policy_state(self):
+        def job(fg, log):
+            rows = utm.policy_filter_state(fg)
+            if not rows:
+                log("[!] no internet-bound policies found at all.", "fail")
+                return
+            log(f"Internet policies on {self.f_host.get()}:", "head")
+            live = 0
+            for p in rows:
+                on = p["utm"] and (p["webfilter"] or p["applist"])
+                live += 1 if on else 0
+                log(f"  #{p['policyid']:<4} {','.join(p['src']):<24} -> "
+                    f"{','.join(p['dst']):<6} "
+                    f"web={p['webfilter'] or '-':<18} "
+                    f"app={p['applist'] or '-':<18} "
+                    f"ssl={p['ssl'] or '-'}",
+                    "ok" if on else "fail")
+            log("")
+            if live:
+                log(f"[ok] {live} of {len(rows)} internet policies are "
+                    f"filtering.", "ok")
+            else:
+                log("[!] NOTHING is being filtered. The profiles exist but no "
+                    "policy references them, so every site and app is allowed. "
+                    "Press 'Switch filtering ON'.", "fail")
+        self._run("Check filtering state", job)
+
+    def act_attach_filters(self):
+        spec = self.spec_from_form()
+        ports = [spec.lan_port]
+        if spec.configure_staff:
+            ports.append(spec.staff_port)
+        if not messagebox.askokcancel(APP_TITLE, (
+                f"Switch filtering on for {', '.join(ports)} on "
+                f"{self.f_host.get()}?\n\n"
+                f"Attaches:\n"
+                f"    web filter          {utm.WEBFILTER_PROFILE}\n"
+                f"    application control {utm.APPLIST_NAME}\n"
+                f"    HTTPS inspection    {spec.ssl_mode}\n\n"
+                f"Only those policies' filtering fields change. Interfaces, "
+                f"DHCP and addresses are untouched, and Guest WiFi is left "
+                f"unfiltered as designed.")):
+            return
+
+        def job(fg, log):
+            utm.attach_filters(fg, ports, spec.ssl_mode, spec.web_filter,
+                               spec.app_filter, log)
+            log("")
+            log("Filtering is now live on those policies.", "ok")
+            if spec.ssl_mode == "deep-inspection":
+                log("[!] Deep inspection is on: every phone and PC needs the "
+                    "FortiGate CA certificate installed, or secure sites will "
+                    "fail rather than load.", "warn")
+        self._run("Switch filtering on", job)
 
     # ---- application signatures -----------------------------------------
     def act_apps_open(self):

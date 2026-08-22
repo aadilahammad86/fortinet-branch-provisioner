@@ -73,6 +73,12 @@ def main():
     ap.add_argument("--block-messaging", action="store_true",
                     help="block the messaging apps (Telegram, IMO, Botim, ...); "
                          "WhatsApp is never included")
+    ap.add_argument("--policy-state", action="store_true",
+                    help="show which internet policies actually enforce the "
+                         "web filter and application sensor")
+    ap.add_argument("--attach", action="store_true",
+                    help="switch filtering ON for the LAN and Staff policies; "
+                         "changes only their filtering fields")
     ap.add_argument("--show-sensor", action="store_true",
                     help="what the application sensor blocks now")
     ap.add_argument("--verify", action="store_true")
@@ -88,6 +94,30 @@ def main():
     fg = FortiGate(cfg["FGT_HOST"], cfg["FGT_USER"], cfg["FGT_PASSWORD"])
     spec = branch.BranchSpec(lan_port=args.lan_port, staff_port=args.staff_port,
                              ssl_mode=args.ssl)
+
+    if args.policy_state:
+        rows = utm.policy_filter_state(fg)
+        print(f"  Internet policies on {cfg['FGT_HOST']}:")
+        live = 0
+        for p in rows:
+            on = p["utm"] and (p["webfilter"] or p["applist"])
+            live += 1 if on else 0
+            print(f"    #{p['policyid']:<4} {','.join(p['src']):<22} -> "
+                  f"{','.join(p['dst']):<6} web={p['webfilter'] or '-':<18} "
+                  f"app={p['applist'] or '-':<18} ssl={p['ssl'] or '-'}")
+        if not live:
+            print()
+            print("  [!] NOTHING is being filtered -- the profiles exist but "
+                  "no policy")
+            print("      references them, so every site and app is allowed. "
+                  "Run --attach.")
+        return
+
+    if args.attach:
+        print(f"  Switching filtering on for {args.lan_port}, {args.staff_port}:")
+        utm.attach_filters(fg, [args.lan_port, args.staff_port], args.ssl,
+                           True, True, lambda m: print(f"    {m}"))
+        return
 
     if args.app_categories or args.find_app or args.app_category:
         sigs, path = appctrl.load_signatures(fg)

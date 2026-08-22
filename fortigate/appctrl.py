@@ -25,6 +25,7 @@ Two facts worth keeping in mind while using it:
     firmware, and messaging apps change constantly.
 """
 from .client import FortiGateError
+from .utm import ALL_CATEGORIES
 
 # The signature table has moved between builds; try each and use what answers.
 SIG_PATHS = [
@@ -47,6 +48,12 @@ SOCIAL_APPS = [
     "Facebook", "Instagram", "Twitter", "TikTok", "Reddit", "Pinterest",
     "Tumblr", "LinkedIn", "Threads",
 ]
+
+
+# id -> name, so the browser reads like the FortiGate's own screen. Verified
+# against this 60F: 28 really is Collaboration (299 signatures), which is
+# where Telegram lives.
+CATEGORY_NAMES = dict(ALL_CATEGORIES)
 
 
 def _noop(_msg):
@@ -99,6 +106,13 @@ def load_signatures(fg):
             cat = cat.get("name", "")
         if isinstance(cat, int):
             cat_id, cat = cat, ""
+        # This firmware returns the category as a bare id, so put the name
+        # back: "Collaboration" is what an operator recognises, "28" is not.
+        if not cat and str(cat_id) != "":
+            try:
+                cat = CATEGORY_NAMES.get(int(cat_id), f"category {cat_id}")
+            except (TypeError, ValueError):
+                cat = f"category {cat_id}"
         out.append({
             "id": _first(r, "id", "app-id"),
             "name": _first(r, "name", "app-name"),

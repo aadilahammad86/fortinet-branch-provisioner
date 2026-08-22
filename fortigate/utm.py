@@ -353,6 +353,86 @@ def apply_filters(fg, spec, log=_noop):
         log(f"[ok] policy {label} ({','.join(srcs)}->wan1) -> {' + '.join(bits)}")
 
 
+def policy_filter_state(fg):
+    """[(policyid, name, srcintf, dstintf, utm_on, webfilter, applist, ssl)].
+
+    Every internet-bound policy and whether it actually enforces anything.
+    A profile that exists but is attached to no policy blocks nothing, and
+    that failure is invisible from the profile screens.
+    """
+    out = []
+    for p in fg.results("/api/v2/cmdb/firewall/policy"):
+        dsts = [x["name"] for x in p.get("dstintf", [])]
+        if not any(d.startswith("wan") for d in dsts):
+            continue
+        out.append({
+            "policyid": p.get("policyid"),
+            "name": p.get("name") or f"#{p.get('policyid')}",
+            "src": [x["name"] for x in p.get("srcintf", [])],
+            "dst": dsts,
+            "utm": (p.get("utm-status") or "disable") == "enable",
+            "webfilter": p.get("webfilter-profile") or "",
+            "applist": p.get("application-list") or "",
+            "ssl": p.get("ssl-ssh-profile") or "",
+        })
+    return out
+
+
+def attach_filters(fg, ports, ssl_mode="deep-inspection", web=True, app=True,
+                   log=_noop):
+    """Turn filtering ON for the internet policies of `ports`. Nothing else.
+
+    This is the step that was missing when a branch had a perfectly good web
+    filter and application sensor that no policy referenced -- so nothing was
+    ever inspected. It only touches the UTM fields of matching policies: no
+    interfaces, no DHCP, no addresses, no profile contents.
+    """
+    touched, skipped = [], []
+    for p in policy_filter_state(fg):
+        if not any(s in ports for s in p["src"]):
+            skipped.append(p)
+            continue
+        body = {
+            "utm-status": "enable",
+            "ssl-ssh-profile": ssl_mode,
+            "profile-protocol-options": "default",
+            "logtraffic": "all",
+            "webfilter-profile": WEBFILTER_PROFILE if web else "",
+            "application-list": APPLIST_NAME if app else "",
+        }
+        fg.call("PUT", f"/api/v2/cmdb/firewall/policy/{p['policyid']}", body)
+        touched.append(p)
+        bits = [b for b in (WEBFILTER_PROFILE if web else None,
+                            APPLIST_NAME if app else None, ssl_mode) if b]
+        log(f"[ok] policy {p['name']} ({','.join(p['src'])}->"
+            f"{','.join(p['dst'])}) -> {' + '.join(bits)}")
+
+    for p in skipped:
+        why = ("Guest -- left unfiltered on purpose"
+               if any(s.endswith("3") for s in p["src"]) else "not in scope")
+        log(f"[skip] policy {p['name']} ({','.join(p['src'])}) -- {why}")
+
+    if not touched:
+        raise FortiGateError(
+            f"No internet policy has any of {ports} as its source, so there "
+            f"was nothing to attach filtering to. Check the port names on the "
+            f"Networks tab against the policies on the firewall.")
+
+    # Read back: the whole point is that 'configured' and 'enforced' differ.
+    after = {p["policyid"]: p for p in policy_filter_state(fg)}
+    for p in touched:
+        got = after.get(p["policyid"], {})
+        if web and got.get("webfilter") != WEBFILTER_PROFILE:
+            raise FortiGateError(
+                f"policy {p['name']} did not take the web filter: reports "
+                f"{got.get('webfilter')!r}.")
+        if app and got.get("applist") != APPLIST_NAME:
+            raise FortiGateError(
+                f"policy {p['name']} did not take the application sensor: "
+                f"reports {got.get('applist')!r}.")
+    return touched
+
+
 def clear_filters(fg, spec, log=_noop):
     """Turn UTM back off on the in-scope policies (leaves the objects intact)."""
     scope = spec.filtered_ports()
