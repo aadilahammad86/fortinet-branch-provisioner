@@ -72,6 +72,9 @@ def main():
         "--hidden-import", "fortigate.branch",
         "--hidden-import", "fortigate.utm",
         "--hidden-import", "fortigate.templates",
+        "--hidden-import", "fortigate.ddns",
+        "--hidden-import", "fortigate.vpn",
+        "--hidden-import", "fortigate.appctrl",
         # docs are opened by the "User guide" button
         "--add-data", f"{ROOT / 'docs' / 'gui-user-guide.md'};docs",
         # nothing here needs these; excluding them keeps the build small

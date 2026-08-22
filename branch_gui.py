@@ -29,11 +29,11 @@ import tkinter as tk
 from tkinter import ttk, filedialog, messagebox, scrolledtext, simpledialog
 
 from fortigate import FortiGate, LoginError, FortiGateError, load_env
-from fortigate import branch, ddns, templates, utm, vpn
+from fortigate import appctrl, branch, ddns, templates, utm, vpn
 from fortigate.templates import TemplateError
 
 APP_TITLE = "FortiGate Branch Provisioner"
-APP_VERSION = "1.3.0-rc1"
+APP_VERSION = "1.3.0-rc2"
 
 
 def app_dir():
@@ -155,6 +155,202 @@ class ScrollFrame(ttk.Frame):
         self.canvas.yview_scroll(-1 * (event.delta // 120), "units")
 
 
+class AppBrowser(tk.Toplevel):
+    """The device's own application signature database, searchable.
+
+    Exists because blocking by category is a trap: Telegram is filed under
+    Collaboration, not Social.Media, so a sensor that blocks Social.Media
+    misses it entirely. Being able to see the real category -- and block one
+    application without blocking its whole category -- is the difference
+    between believing something is blocked and it being blocked.
+
+    Nothing here touches the device until 'Save to firewall'.
+    """
+
+    COLS = [("name", "Application", 260), ("category", "Category", 150),
+            ("technology", "Technology", 130), ("popularity", "Popularity", 90),
+            ("risk", "Risk", 60), ("blocked", "Blocked", 80)]
+
+    def __init__(self, app):
+        super().__init__(app)
+        self.app = app
+        self.title("Application signatures")
+        self.geometry("1000x620")
+        self.sigs = []
+        self.blocked = set()          # ids, local until saved
+        self.categories = []
+        self.dirty = False
+
+        bar = ttk.Frame(self, padding=10)
+        bar.pack(fill="x")
+        ttk.Label(bar, text="Search").pack(side="left")
+        self.v_search = tk.StringVar()
+        e = ttk.Entry(bar, textvariable=self.v_search, width=24)
+        e.pack(side="left", padx=(6, 12))
+        e.bind("<KeyRelease>", lambda _e: self._fill())
+        ttk.Label(bar, text="Category").pack(side="left")
+        self.v_cat = tk.StringVar(value="All categories")
+        self.cat_box = ttk.Combobox(bar, textvariable=self.v_cat, width=28,
+                                    state="readonly", values=["All categories"])
+        self.cat_box.pack(side="left", padx=(6, 12))
+        self.cat_box.bind("<<ComboboxSelected>>", lambda _e: self._fill())
+        self.v_only_blocked = tk.BooleanVar(value=False)
+        ttk.Checkbutton(bar, text="Blocked only", variable=self.v_only_blocked,
+                        command=self._fill).pack(side="left")
+        ttk.Button(bar, text="Load from firewall", width=18,
+                   command=self.app.act_apps_load).pack(side="right")
+
+        self.count = ttk.Label(self, foreground="#555", padding=(10, 0))
+        self.count.pack(anchor="w")
+
+        holder = ttk.Frame(self, padding=(10, 6))
+        holder.pack(fill="both", expand=True)
+        self.tree = ttk.Treeview(holder, columns=[c for c, _t, _w in self.COLS],
+                                 show="headings", selectmode="extended")
+        for key, title, width in self.COLS:
+            self.tree.heading(key, text=title,
+                              command=lambda k=key: self._sort(k))
+            self.tree.column(key, width=width,
+                             anchor="center" if key in ("popularity", "risk",
+                                                        "blocked") else "w")
+        vsb = ttk.Scrollbar(holder, orient="vertical", command=self.tree.yview)
+        self.tree.configure(yscrollcommand=vsb.set)
+        self.tree.pack(side="left", fill="both", expand=True)
+        vsb.pack(side="right", fill="y")
+        self.tree.tag_configure("blocked", foreground="#b00020")
+        self.tree.bind("<Double-1>", lambda _e: self._toggle())
+
+        btns = ttk.Frame(self, padding=10)
+        btns.pack(fill="x")
+        for text, cmd, tip in (
+            ("Block selected", lambda: self._set_selected(True),
+             "Add the highlighted applications to the block list. "
+             "Double-clicking a row does the same."),
+            ("Unblock selected", lambda: self._set_selected(False), ""),
+            ("Block everything shown", self._block_shown,
+             "Blocks every row currently listed -- use it with a category "
+             "chosen to block a whole category by name."),
+            ("Block messaging apps", self._block_messaging,
+             "Telegram, IMO, Botim, Line, Viber, WeChat, Signal, Messenger, "
+             "Snapchat, Discord, Skype and similar. WhatsApp is never "
+             "included."),
+        ):
+            b = ttk.Button(btns, text=text, command=cmd, width=22)
+            b.pack(side="left", padx=(0, 6))
+            if tip:
+                Tooltip(b, tip)
+        ttk.Button(btns, text="Close", width=10,
+                   command=self.destroy).pack(side="right")
+        self.save_btn = ttk.Button(btns, text="Save to firewall", width=18,
+                                   command=self.app.act_apps_save)
+        self.save_btn.pack(side="right", padx=6)
+        Tooltip(self.save_btn, "Write the block list to the branch application "
+                               "sensor. Nothing is sent until you press this.")
+
+        self._sort_key, self._sort_rev = "name", False
+        self._status("Press 'Load from firewall' to read the signature "
+                     "database from the device.")
+
+    # -- data ------------------------------------------------------------
+    def populate(self, sigs, blocked, source=""):
+        self.sigs = sigs
+        self.blocked = set(blocked)
+        self.categories = appctrl.categories(sigs)
+        self.cat_box.configure(values=["All categories"] +
+                               [f"{n}  ({c})" for n, c in self.categories])
+        self.dirty = False
+        self._fill(note=f"read from {source}" if source else "")
+
+    def _rows(self):
+        cat = self.v_cat.get()
+        cat = "" if cat.startswith("All") else cat.split("  (")[0]
+        rows = appctrl.search(self.sigs, self.v_search.get(), cat)
+        if self.v_only_blocked.get():
+            rows = [r for r in rows if r["id"] in self.blocked]
+        key = self._sort_key
+        rows.sort(key=lambda r: (str(r[key]).lower() if isinstance(r[key], str)
+                                 else r[key]), reverse=self._sort_rev)
+        return rows
+
+    def _fill(self, note=""):
+        self.tree.delete(*self.tree.get_children())
+        rows = self._rows()
+        for r in rows[:4000]:
+            on = r["id"] in self.blocked
+            self.tree.insert(
+                "", "end", iid=str(r["id"]),
+                values=(r["name"], r["category"], r["technology"],
+                        "*" * r["popularity"], r["risk"],
+                        "BLOCKED" if on else ""),
+                tags=("blocked",) if on else ())
+        self._status(note)
+
+    def _status(self, note=""):
+        shown = len(self.tree.get_children())
+        bits = [f"{len(self.sigs)} signatures on this firewall",
+                f"showing {shown}", f"{len(self.blocked)} blocked"]
+        if self.dirty:
+            bits.append("UNSAVED -- press 'Save to firewall'")
+        if note:
+            bits.append(note)
+        self.count.configure(
+            text="   |   ".join(bits),
+            foreground="#b00020" if self.dirty else "#555")
+
+    # -- editing (local only) ---------------------------------------------
+    def _set_selected(self, on):
+        sel = self.tree.selection()
+        if not sel:
+            messagebox.showinfo("Application signatures",
+                                "Highlight one or more rows first.")
+            return
+        for iid in sel:
+            self.blocked.add(int(iid)) if on else self.blocked.discard(int(iid))
+        self.dirty = True
+        self._fill()
+        self.tree.selection_set(sel)
+
+    def _toggle(self):
+        for iid in self.tree.selection():
+            i = int(iid)
+            self.blocked.discard(i) if i in self.blocked else self.blocked.add(i)
+        self.dirty = True
+        self._fill()
+
+    def _block_shown(self):
+        rows = self._rows()
+        if not rows or not messagebox.askokcancel(
+                "Application signatures",
+                f"Block all {len(rows)} applications currently listed?"):
+            return
+        self.blocked |= {r["id"] for r in rows}
+        self.dirty = True
+        self._fill()
+
+    def _block_messaging(self):
+        found, missing = appctrl.resolve(self.sigs, appctrl.MESSAGING_APPS)
+        if not found:
+            messagebox.showinfo("Application signatures",
+                                "Load the signatures from the firewall first.")
+            return
+        self.blocked |= {s["id"] for s in found}
+        self.dirty = True
+        self._fill(note=f"added {len(found)} messaging signatures")
+        self.app._write_log(
+            f"[ok] selected {len(found)} messaging signatures: "
+            + ", ".join(s["name"] for s in found[:12])
+            + (" ..." if len(found) > 12 else ""), "ok")
+        if missing:
+            self.app._write_log(
+                f"[!] not in this firmware's database: {', '.join(missing)}",
+                "warn")
+
+    def _sort(self, key):
+        self._sort_rev = not self._sort_rev if key == self._sort_key else False
+        self._sort_key = key
+        self._fill()
+
+
 class Tooltip:
     """Minimal hover tooltip (no third-party dependency)."""
 
@@ -198,6 +394,7 @@ class App(tk.Tk):
         self.q = queue.Queue()
         self.busy = False
         self.device_info = None
+        self.app_browser = None
         self.action_buttons = []
 
         self._build_ui()
@@ -575,13 +772,29 @@ class App(tk.Tk):
 
         cats = ttk.LabelFrame(body, text="Blocked application categories", padding=8)
         cats.pack(side="left", fill="both", expand=True, padx=(12, 0))
+        # The checkboxes below use grid, so this header lives in its own frame.
+        hdr = ttk.Frame(cats)
+        hdr.grid(row=0, column=0, columnspan=4, sticky="w", pady=(0, 8))
+        ttk.Label(hdr, wraplength=300, justify="left", style="Warn.TLabel",
+                  text="Categories are coarse and not where you would guess — "
+                       "Telegram is filed under Collaboration, not Social."
+                       "Media. Use the button below to see the real category "
+                       "of any app and block it on its own.").pack(
+            anchor="w", pady=(0, 6))
+        b = ttk.Button(hdr, text="Browse application signatures…", width=32,
+                       command=self.act_apps_open)
+        b.pack(anchor="w")
+        Tooltip(b, "Open the firewall's own signature database: search it, see "
+                   "which category each application really belongs to, and "
+                   "block individual applications.")
+        self.action_buttons.append(b)
         self.cat_vars = {}
         defaults = {cid for cid, _ in utm.DEFAULT_CATEGORIES}
         for i, (cid, name) in enumerate(utm.ALL_CATEGORIES):
             v = tk.BooleanVar(value=cid in defaults)
             self.cat_vars[cid] = v
             ttk.Checkbutton(cats, text=f"{name}  ({cid})", variable=v).grid(
-                row=i % 9, column=i // 9, sticky="w", padx=(0, 18))
+                row=1 + i % 9, column=i // 9, sticky="w", padx=(0, 18))
 
         ttk.Label(f, wraplength=880, justify="left", style="Warn.TLabel", text=(
             "YouTube is in Video/Audio, not Social.Media — the website list is what "
@@ -1182,6 +1395,10 @@ class App(tk.Tk):
                     self.wf_target.configure(text=payload)
                 elif kind == "vpn_local":
                     self.vpn_local_lbl.configure(text=payload)
+                elif kind == "apps":
+                    sigs, blocked, source = payload
+                    if self.app_browser and self.app_browser.winfo_exists():
+                        self.app_browser.populate(sigs, blocked, source)
         except queue.Empty:
             pass
         self.after(100, self._drain_queue)
@@ -1451,6 +1668,72 @@ class App(tk.Tk):
                 log(f"  {len(missing)} to add, {len(extra)} to remove — press "
                     f"'Update blocked sites now' to apply.", "warn")
         self._run("Check blocked sites", job)
+
+    # ---- application signatures -----------------------------------------
+    def act_apps_open(self):
+        if self.app_browser and self.app_browser.winfo_exists():
+            self.app_browser.lift()
+            return
+        self.app_browser = AppBrowser(self)
+        self.act_apps_load()
+
+    def act_apps_load(self):
+        if not (self.app_browser and self.app_browser.winfo_exists()):
+            return
+
+        def job(fg, log):
+            sigs, path = appctrl.load_signatures(fg)
+            log(f"[ok] {len(sigs)} application signatures read from {path}")
+            cats = appctrl.categories(sigs)
+            log("  categories on this firmware: " + ", ".join(
+                f"{n} ({c})" for n, c in cats[:12])
+                + (" ..." if len(cats) > 12 else ""))
+            try:
+                sensor = appctrl.read_sensor(fg, utm.APPLIST_NAME)
+            except FortiGateError as e:
+                log(f"[!] {e}", "warn")
+                sensor = {"categories": [], "applications": []}
+            names = dict(utm.ALL_CATEGORIES)
+            log(f"  '{utm.APPLIST_NAME}' blocks categories: "
+                + (", ".join(f"{names.get(c, c)} ({c})"
+                             for c in sensor["categories"]) or "none"))
+            log(f"  and {len(sensor['applications'])} individual application(s)")
+            pols = appctrl.sensor_policies(fg, utm.APPLIST_NAME)
+            log(f"  enforced by: {', '.join(pols) or 'NO POLICY -- nothing is '
+                                              'being blocked'}",
+                "ok" if pols else "fail")
+            self.q.put(("apps", (sigs, sensor["applications"], path)))
+        self._run("Read application signatures", job)
+
+    def act_apps_save(self):
+        b = self.app_browser
+        if not (b and b.winfo_exists()):
+            return
+        blocked = sorted(b.blocked)
+        cats = [cid for cid, v in self.cat_vars.items() if v.get()]
+        names = {s["id"]: s["name"] for s in b.sigs}
+        sample = ", ".join(names.get(i, str(i)) for i in blocked[:8])
+        if not messagebox.askokcancel(APP_TITLE, (
+                f"Write the application sensor '{utm.APPLIST_NAME}' to "
+                f"{self.f_host.get()}?\n\n"
+                f"{len(blocked)} individual application(s): {sample}"
+                f"{' ...' if len(blocked) > 8 else ''}\n"
+                f"{len(cats)} whole categor(y/ies) from the Filtering tab.\n\n"
+                f"Individual applications are written above the categories, so "
+                f"they take effect first. Nothing else on the firewall "
+                f"changes.")):
+            return
+
+        def job(fg, log):
+            appctrl.write_sensor(fg, utm.APPLIST_NAME, cats, blocked, log)
+            pols = appctrl.sensor_policies(fg, utm.APPLIST_NAME)
+            if pols:
+                log(f"[ok] live on: {', '.join(pols)}")
+            else:
+                log("[!] no policy uses this sensor, so nothing is actually "
+                    "being blocked. Run a full Apply to attach it.", "fail")
+            b.dirty = False
+        self._run("Save application blocks", job)
 
     # ---- dynamic DNS -----------------------------------------------------
     def _ddns_args(self):

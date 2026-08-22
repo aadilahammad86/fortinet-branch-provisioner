@@ -32,7 +32,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from fortigate import FortiGate, FortiGateError, load_env      # noqa: E402
-from fortigate import branch, utm                              # noqa: E402
+from fortigate import appctrl, branch, utm                     # noqa: E402
 
 
 def main():
@@ -61,6 +61,20 @@ def main():
     ap.add_argument("--list-profiles", action="store_true",
                     help="show the web filter profiles on the device, the URL "
                          "table each uses and which policies use it")
+    ap.add_argument("--find-app", metavar="NAME",
+                    help="search the device's signature database and show the "
+                         "real category of each match")
+    ap.add_argument("--app-category", metavar="NAME",
+                    help="list every signature in one category, e.g. Collaboration")
+    ap.add_argument("--app-categories", action="store_true",
+                    help="list the signature categories and how many are in each")
+    ap.add_argument("--block-app", action="append", default=[], metavar="NAME",
+                    help="block one application by signature name; repeatable")
+    ap.add_argument("--block-messaging", action="store_true",
+                    help="block the messaging apps (Telegram, IMO, Botim, ...); "
+                         "WhatsApp is never included")
+    ap.add_argument("--show-sensor", action="store_true",
+                    help="what the application sensor blocks now")
     ap.add_argument("--verify", action="store_true")
     args = ap.parse_args()
 
@@ -74,6 +88,59 @@ def main():
     fg = FortiGate(cfg["FGT_HOST"], cfg["FGT_USER"], cfg["FGT_PASSWORD"])
     spec = branch.BranchSpec(lan_port=args.lan_port, staff_port=args.staff_port,
                              ssl_mode=args.ssl)
+
+    if args.app_categories or args.find_app or args.app_category:
+        sigs, path = appctrl.load_signatures(fg)
+        print(f"  {len(sigs)} signatures read from {path}")
+        if args.app_categories:
+            for name, count in appctrl.categories(sigs):
+                print(f"    {name:<24} {count:>5}")
+            return
+        rows = appctrl.search(sigs, args.find_app or "", args.app_category or "")
+        blocked = set()
+        try:
+            blocked = set(appctrl.read_sensor(fg, utm.APPLIST_NAME)["applications"])
+        except FortiGateError:
+            pass
+        print(f"  {len(rows)} match:")
+        for s in rows[:200]:
+            mark = "  <-- BLOCKED" if s["id"] in blocked else ""
+            print(f"    {str(s['name'])[:38]:<38} {s['category']:<18} "
+                  f"{s['technology']:<16} id {s['id']}{mark}")
+        if len(rows) > 200:
+            print(f"    ... and {len(rows) - 200} more")
+        return
+
+    if args.show_sensor:
+        s = appctrl.read_sensor(fg, utm.APPLIST_NAME)
+        names = dict(utm.ALL_CATEGORIES)
+        print(f"  sensor '{utm.APPLIST_NAME}':")
+        print("    categories: " + (", ".join(
+            f"{names.get(c, c)} ({c})" for c in s["categories"]) or "none"))
+        if s["applications"]:
+            sigs, _p = appctrl.load_signatures(fg)
+            by_id = {x["id"]: x for x in sigs}
+            for a in s["applications"]:
+                x = by_id.get(a)
+                print(f"    app {a:<8} {x['name'] if x else '(unknown id)':<32} "
+                      f"{x['category'] if x else ''}")
+        else:
+            print("    individual applications: none")
+        pols = appctrl.sensor_policies(fg, utm.APPLIST_NAME)
+        print("    enforced by: " + (", ".join(pols) or
+                                     "NO POLICY -- nothing is blocked"))
+        return
+
+    if args.block_app or args.block_messaging:
+        sigs, _p = appctrl.load_signatures(fg)
+        wanted = list(args.block_app)
+        if args.block_messaging:
+            wanted += appctrl.MESSAGING_APPS
+        print(f"  Blocking {len(wanted)} named application(s) on "
+              f"'{utm.APPLIST_NAME}':")
+        appctrl.block_apps(fg, utm.APPLIST_NAME, sigs, wanted,
+                           lambda m: print(f"    {m}"))
+        return
 
     if args.list_profiles:
         print(f"Web filter profiles on {cfg['FGT_HOST']}:")
