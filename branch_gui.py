@@ -33,7 +33,7 @@ from fortigate import appctrl, branch, ddns, templates, utm, vpn
 from fortigate.templates import TemplateError
 
 APP_TITLE = "FortiGate Branch Provisioner"
-APP_VERSION = "1.3.0-rc4"
+APP_VERSION = "1.3.0-rc5"
 
 
 def app_dir():
@@ -177,7 +177,8 @@ class AppBrowser(tk.Toplevel):
         self.title("Application signatures")
         self.geometry("1000x620")
         self.sigs = []
-        self.blocked = set()          # ids, local until saved
+        self.blocked = set()          # individual app ids, local until saved
+        self.blocked_cats = set()     # category ids blocked wholesale
         self.categories = []
         self.dirty = False
 
@@ -218,6 +219,7 @@ class AppBrowser(tk.Toplevel):
         self.tree.pack(side="left", fill="both", expand=True)
         vsb.pack(side="right", fill="y")
         self.tree.tag_configure("blocked", foreground="#b00020")
+        self.tree.tag_configure("bycat", foreground="#a04000")
         self.tree.bind("<Double-1>", lambda _e: self._toggle())
 
         btns = ttk.Frame(self, padding=10)
@@ -230,13 +232,6 @@ class AppBrowser(tk.Toplevel):
             ("Block everything shown", self._block_shown,
              "Blocks every row currently listed -- use it with a category "
              "chosen to block a whole category by name."),
-            ("Block messaging apps", self._block_messaging,
-             "Telegram, IMO, Botim, Line, Viber, WeChat, Signal, Messenger, "
-             "Snapchat, Discord, Skype and similar. WhatsApp is never "
-             "included."),
-            ("Block social apps", self._block_social,
-             "Facebook, Instagram, X/Twitter, TikTok, Reddit, Pinterest, "
-             "Tumblr, LinkedIn, Threads."),
         ):
             b = ttk.Button(btns, text=text, command=cmd, width=22)
             b.pack(side="left", padx=(0, 6))
@@ -255,21 +250,38 @@ class AppBrowser(tk.Toplevel):
                      "database from the device.")
 
     # -- data ------------------------------------------------------------
-    def populate(self, sigs, blocked, source=""):
+    def populate(self, sigs, blocked, blocked_cats=(), source=""):
         self.sigs = sigs
         self.blocked = set(blocked)
+        self.blocked_cats = set(blocked_cats)
         self.categories = appctrl.categories(sigs)
-        self.cat_box.configure(values=["All categories"] +
-                               [f"{n}  ({c})" for n, c in self.categories])
+        names = {s["category"]: s["category_id"] for s in sigs}
+        self.cat_box.configure(values=["All categories"] + [
+            f"{n}  ({c})" + ("  - BLOCKED" if names.get(n) in self.blocked_cats
+                             else "")
+            for n, c in self.categories])
         self.dirty = False
         self._fill(note=f"read from {source}" if source else "")
+
+    def _is_blocked(self, row):
+        """How this app is blocked: by its whole category, on its own, or not.
+
+        A category block covers every signature in it -- 181 apps for
+        Social.Media alone -- so showing only the individual overrides hides
+        almost everything that is actually blocked.
+        """
+        if row["category_id"] in self.blocked_cats:
+            return "CATEGORY"
+        if row["id"] in self.blocked:
+            return "app"
+        return ""
 
     def _rows(self):
         cat = self.v_cat.get()
         cat = "" if cat.startswith("All") else cat.split("  (")[0]
         rows = appctrl.search(self.sigs, self.v_search.get(), cat)
         if self.v_only_blocked.get():
-            rows = [r for r in rows if r["id"] in self.blocked]
+            rows = [r for r in rows if self._is_blocked(r)]
         key = self._sort_key
         rows.sort(key=lambda r: (str(r[key]).lower() if isinstance(r[key], str)
                                  else r[key]), reverse=self._sort_rev)
@@ -279,19 +291,25 @@ class AppBrowser(tk.Toplevel):
         self.tree.delete(*self.tree.get_children())
         rows = self._rows()
         for r in rows[:4000]:
-            on = r["id"] in self.blocked
+            how = self._is_blocked(r)
             self.tree.insert(
                 "", "end", iid=str(r["id"]),
                 values=(r["name"], r["category"], r["technology"],
-                        "*" * r["popularity"], r["risk"],
-                        "BLOCKED" if on else ""),
-                tags=("blocked",) if on else ())
+                        "*" * r["popularity"], r["risk"], how),
+                tags=(("bycat",) if how == "CATEGORY"
+                      else ("blocked",) if how else ()))
         self._status(note)
 
     def _status(self, note=""):
         shown = len(self.tree.get_children())
+        by_cat = sum(1 for s in self.sigs
+                     if s["category_id"] in self.blocked_cats)
+        solo = sum(1 for s in self.sigs if s["id"] in self.blocked
+                   and s["category_id"] not in self.blocked_cats)
         bits = [f"{len(self.sigs)} signatures on this firewall",
-                f"showing {shown}", f"{len(self.blocked)} blocked"]
+                f"showing {shown}",
+                f"{by_cat + solo} blocked  ({by_cat} by category, "
+                f"{solo} individually)"]
         if self.dirty:
             bits.append("UNSAVED -- press 'Save to firewall'")
         if note:
@@ -1451,9 +1469,13 @@ class App(tk.Tk):
                 elif kind == "vpn_local":
                     self.vpn_local_lbl.configure(text=payload)
                 elif kind == "apps":
-                    sigs, blocked, source = payload
+                    sigs, blocked, cats, source = payload
+                    # Keep the Filtering tab's ticks honest: they should show
+                    # what the firewall has, not what was last typed here.
+                    for cid, var in self.cat_vars.items():
+                        var.set(cid in cats)
                     if self.app_browser and self.app_browser.winfo_exists():
-                        self.app_browser.populate(sigs, blocked, source)
+                        self.app_browser.populate(sigs, blocked, cats, source)
         except queue.Empty:
             pass
         self.after(100, self._drain_queue)
@@ -1813,7 +1835,8 @@ class App(tk.Tk):
             log(f"  enforced by: {', '.join(pols) or 'NO POLICY -- nothing is '
                                               'being blocked'}",
                 "ok" if pols else "fail")
-            self.q.put(("apps", (sigs, sensor["applications"], path)))
+            self.q.put(("apps", (sigs, sensor["applications"],
+                                 sensor["categories"], path)))
         self._run("Read application signatures", job)
 
     def act_apps_save(self):
@@ -1821,7 +1844,8 @@ class App(tk.Tk):
         if not (b and b.winfo_exists()):
             return
         blocked = sorted(b.blocked)
-        cats = [cid for cid, v in self.cat_vars.items() if v.get()]
+        cats = sorted(b.blocked_cats) or [
+            cid for cid, v in self.cat_vars.items() if v.get()]
         names = {s["id"]: s["name"] for s in b.sigs}
         sample = ", ".join(names.get(i, str(i)) for i in blocked[:8])
         if not messagebox.askokcancel(APP_TITLE, (
@@ -1850,7 +1874,8 @@ class App(tk.Tk):
             live = appctrl.read_sensor(fg, utm.APPLIST_NAME)
             log(f"[ok] firewall now blocks {len(live['applications'])} "
                 f"individual application(s)")
-            self.q.put(("apps", (sigs, live["applications"], "after saving")))
+            self.q.put(("apps", (sigs, live["applications"],
+                                 live["categories"], "after saving")))
         self._run("Save application blocks", job)
 
     # ---- dynamic DNS -----------------------------------------------------
