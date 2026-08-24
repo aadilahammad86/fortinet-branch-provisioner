@@ -378,7 +378,8 @@ def policy_filter_state(fg):
     return out
 
 
-def attach_filters(fg, ports, ssl_mode="deep-inspection", web=True, app=True,
+def attach_filters(fg, ports, ssl_mode="certificate-inspection", web=True,
+                   app=True,
                    log=_noop):
     """Turn filtering ON for the internet policies of `ports`. Nothing else.
 

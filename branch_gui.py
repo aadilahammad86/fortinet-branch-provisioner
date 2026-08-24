@@ -33,7 +33,7 @@ from fortigate import appctrl, branch, ddns, templates, utm, vpn
 from fortigate.templates import TemplateError
 
 APP_TITLE = "FortiGate Branch Provisioner"
-APP_VERSION = "1.3.0-rc5"
+APP_VERSION = "1.3.0-rc6"
 
 
 def app_dir():
@@ -59,13 +59,15 @@ ROOT = app_dir()
 PORTS = ["internal", "internal1", "internal2", "internal3", "internal4",
          "internal5", "dmz"]
 SSL_MODES = [
-    ("deep-inspection",
-     "Deep inspection  (current branch standard - needs FortiGate CA on every device)"),
     ("certificate-inspection",
-     "Certificate inspection  (blocks the same sites, no per-device setup)"),
+     "Certificate inspection  (branch standard - blocks the same sites, "
+     "nothing to install on phones or PCs)"),
+    ("deep-inspection",
+     "Deep inspection  (only with the FortiGate CA installed on EVERY device - "
+     "without it, all secure sites fail)"),
     ("no-inspection", "No inspection  (HTTPS site blocking will NOT work)"),
 ]
-DEFAULT_SSL = "deep-inspection"      # matches the CLI and the staged unit
+DEFAULT_SSL = "certificate-inspection"   # must match the CLI --ssl default
 
 
 # =========================================================================
@@ -776,10 +778,13 @@ class App(tk.Tk):
             ttk.Radiobutton(f, text=label, value=val, variable=self.v_ssl
                             ).pack(anchor="w")
         ttk.Label(f, style="Warn.TLabel", wraplength=880, justify="left", text=(
+            "Certificate inspection is the default: it blocks the same sites "
+            "with nothing to install on phones or PCs. It just cannot show a "
+            "branded block page — a blocked site fails in the browser instead.\n"
             "Deep inspection re-signs every secure site, so the FortiGate CA "
-            "certificate must be installed on every phone and PC or browsers will "
-            "block sites outright. Certificate inspection blocks the same sites with "
-            "no per-device setup — it just cannot show a branded block page.")
+            "certificate must be on EVERY phone and PC first. Without it, all "
+            "secure sites stop working, not only the blocked ones, and the "
+            "branch looks like it has lost the internet.")
                   ).pack(anchor="w", pady=(6, 0))
 
         body = ttk.Frame(f)

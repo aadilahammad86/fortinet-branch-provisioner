@@ -259,9 +259,13 @@ until then — it fails silently without live rating lookups.
 - Run from source: `python branch_gui.py`. Build: `python build_exe.py`.
 - Operator documentation is `docs/gui-user-guide.md` — written for someone with
   no networking background; the **User guide** button in the app opens it.
-- The GUI defaults to `deep-inspection` to match the CLI and the staged unit.
-  Changing that default means changing `DEFAULT_SSL` in `branch_gui.py` **and**
-  the CLI's `--ssl` default, or the two front ends disagree.
+- **`certificate-inspection` is the default everywhere (changed 2026-08-24).**
+  It blocks the same sites with nothing to install on clients; deep inspection
+  breaks every secure site when the CA is missing, which is the state most
+  branches are actually in. The default lives in FIVE places and they must
+  agree: `DEFAULT_SSL` in `branch_gui.py`, `BranchSpec.ssl_mode`,
+  `utm.attach_filters()`, `configure-utm-filters.py --ssl`, and the
+  `pick(args.ssl, ...)` fallback in `provision-branch.py`.
 - Device calls run on a worker thread and report back through a `queue`. Calling
   the device on the UI thread freezes the window and Windows greys it out.
 - **Saved branches bar** sits above the notebook, not inside a tab — picking a

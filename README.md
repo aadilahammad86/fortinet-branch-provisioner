@@ -193,8 +193,7 @@ live "Target: ... -> URL table #N ... used by <policies>" line.
   AnyDesk, RDP, VNC, …) and **23 Social.Media** (Facebook, Instagram,
   Twitter, …). Everything else passes.
 
-Both run over HTTPS **deep-inspection**, so the FortiGate CA certificate
-(`Fortinet_CA_SSL`) must be installed on every client device on-site.
+Both run over HTTPS **certificate-inspection** by default: it blocks the same sites with nothing to install on client devices. `--ssl deep-inspection` is available, but then the FortiGate CA certificate must be on every client or *all* secure sites fail.
 
 See `docs/network-setup.md` for the full detail and caveats.
 

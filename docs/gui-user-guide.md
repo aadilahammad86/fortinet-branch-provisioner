@@ -265,9 +265,14 @@ has to see which site is being requested. There are three settings:
 | **Certificate inspection** | Yes, by site name | Nothing. No per-device setup. A blocked site shows a browser error rather than a branded "blocked" page. |
 | **No inspection** | **No** | Website blocking silently stops working. Only use this if you have turned the website filter off. |
 
-**Deep inspection is the current branch standard**, so it is selected by
-default. If nobody at the branch can install a certificate on every device,
-switch to **Certificate inspection** — it blocks the same sites with no setup.
+**Certificate inspection is the branch standard and is selected by default.**
+It blocks the same sites with nothing to install on phones or PCs, which is
+what a branch can actually maintain.
+
+Only choose **Deep inspection** if the FortiGate certificate really is
+installed on every phone and PC at that site. Without it the unit does not
+merely fail to filter — **every** secure site stops working, and it looks like
+the internet is down.
 
 ---
 

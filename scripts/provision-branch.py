@@ -126,7 +126,7 @@ def build_spec(args, tmpl=None):
         pppoe_user=args.pppoe_user or "", pppoe_pass=args.pppoe_pass or "",
         web_filter=filters_on and tmpl.get("web_filter", True),
         app_filter=filters_on and tmpl.get("app_filter", True),
-        ssl_mode=pick(args.ssl, "ssl_mode", "deep-inspection"),
+        ssl_mode=pick(args.ssl, "ssl_mode", "certificate-inspection"),
         blocked_urls=list(tmpl.get("blocked_urls") or []),
         blocked_categories=list(tmpl.get("blocked_categories") or []),
     )

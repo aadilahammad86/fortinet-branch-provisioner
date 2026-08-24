@@ -58,7 +58,7 @@ class BranchSpec:
 
     web_filter: bool = True
     app_filter: bool = True
-    ssl_mode: str = "deep-inspection"  # or certificate-inspection / no-inspection
+    ssl_mode: str = "certificate-inspection"   # or deep-inspection / no-inspection
     blocked_urls: list = field(default_factory=list)     # [] = use utm defaults
     blocked_categories: list = field(default_factory=list)
 

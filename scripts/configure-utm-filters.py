@@ -37,7 +37,7 @@ from fortigate import appctrl, branch, utm                     # noqa: E402
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--ssl", default="deep-inspection",
+    ap.add_argument("--ssl", default="certificate-inspection",
                     choices=["certificate-inspection", "deep-inspection",
                              "no-inspection"])
     ap.add_argument("--lan-port", default="internal")
