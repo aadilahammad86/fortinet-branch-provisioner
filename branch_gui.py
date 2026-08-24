@@ -29,11 +29,12 @@ import tkinter as tk
 from tkinter import ttk, filedialog, messagebox, scrolledtext, simpledialog
 
 from fortigate import FortiGate, LoginError, FortiGateError, load_env
-from fortigate import appctrl, branch, ddns, templates, utm, vpn
+from fortigate import (appctrl, branch, connections, ddns, templates,
+                       utm, vpn)
 from fortigate.templates import TemplateError
 
 APP_TITLE = "FortiGate Branch Provisioner"
-APP_VERSION = "1.3.0-rc6"
+APP_VERSION = "1.3.0-rc7"
 
 
 def app_dir():
@@ -77,11 +78,17 @@ class Field:
     """A labelled entry with optional live-computed hint text."""
 
     def __init__(self, parent, row, label, value="", width=22, show=None,
-                 hint="", tooltip=""):
+                 hint="", tooltip="", choices=None):
         ttk.Label(parent, text=label).grid(row=row, column=0, sticky="w",
                                            padx=(0, 8), pady=3)
         self.var = tk.StringVar(value=str(value))
-        self.entry = ttk.Entry(parent, textvariable=self.var, width=width, show=show)
+        if choices is None:
+            self.entry = ttk.Entry(parent, textvariable=self.var, width=width,
+                                   show=show)
+        else:
+            # Editable combobox: type any address, or pick a remembered one.
+            self.entry = ttk.Combobox(parent, textvariable=self.var,
+                                      width=width - 2, values=list(choices))
         self.entry.grid(row=row, column=1, sticky="w", pady=3)
         self.hint = ttk.Label(parent, text=hint, foreground="#666")
         self.hint.grid(row=row, column=2, sticky="w", padx=(10, 0))
@@ -454,6 +461,7 @@ class App(tk.Tk):
 
         self._build_ui()
         self._load_env_defaults()
+        self._host_changed()
         self.after(100, self._drain_queue)
 
     # ---- layout ---------------------------------------------------------
@@ -611,58 +619,85 @@ class App(tk.Tk):
                   style="Head.TLabel").grid(row=0, column=0, columnspan=3,
                                             sticky="w", pady=(0, 10))
         self.f_host = Field(f, 1, "Device address", "192.168.1.99",
+                            choices=self._saved_hosts(),
                             tooltip="A factory-default FortiGate is 192.168.1.99.\n"
-                                    "A branch unit already set up is usually 172.21.0.1.")
+                                    "A branch unit already set up is usually 172.21.0.1.\n"
+                                    "Remembered addresses are in the drop-down.")
         self.f_user = Field(f, 2, "Username", "admin")
         self.f_pass = Field(f, 3, "Password", "", show="*",
                             tooltip="A factory-default unit has a blank password.")
 
+        # Remembered connections: type or pick an address and its credentials
+        # fill in. Stored on this laptop only, encrypted to this Windows
+        # account -- never in a branch template, which gets emailed around.
+        rem = ttk.Frame(f)
+        rem.grid(row=4, column=0, columnspan=4, sticky="w", pady=(8, 0))
+        self.v_remember = tk.BooleanVar(value=True)
+        cb = ttk.Checkbutton(
+            rem, text="Remember this connection", variable=self.v_remember,
+            command=self.act_remember_toggle)
+        cb.pack(side="left")
+        Tooltip(cb, "Save this firewall's username and password on this "
+                    "laptop, and fill them in whenever you type or pick its "
+                    "address.\nThe password is encrypted to your Windows "
+                    "account -- it cannot be read on another machine or by "
+                    "another user.\nBranch templates never contain it.")
+        self.remember_hint = ttk.Label(rem, foreground="#666", text="")
+        self.remember_hint.pack(side="left", padx=(10, 0))
+        ttk.Button(rem, text="Forget this one", width=15,
+                   command=self.act_forget_connection).pack(side="left", padx=(10, 0))
+
+        # Filling in on address change is the whole feature.
+        self.f_host.var.trace_add("write", lambda *_a: self._host_changed())
+        self.f_host.entry.bind("<<ComboboxSelected>>",
+                               lambda _e: self._host_changed())
+
         btns = ttk.Frame(f)
-        btns.grid(row=4, column=0, columnspan=4, sticky="w", pady=(14, 0))
+        btns.grid(row=5, column=0, columnspan=4, sticky="w", pady=(14, 0))
         b = ttk.Button(btns, text="Test connection", command=self.act_test)
         b.pack(side="left")
         self.action_buttons.append(b)
 
         self.dev_label = ttk.Label(f, text="", justify="left")
-        self.dev_label.grid(row=5, column=0, columnspan=4, sticky="w", pady=(14, 0))
+        self.dev_label.grid(row=6, column=0, columnspan=4, sticky="w", pady=(14, 0))
 
-        ttk.Separator(f, orient="horizontal").grid(row=6, column=0, columnspan=4,
+        ttk.Separator(f, orient="horizontal").grid(row=7, column=0, columnspan=4,
                                                    sticky="ew", pady=16)
 
         # ---- config backup ----
         ttk.Label(f, text="Config backup", style="Head.TLabel").grid(
-            row=7, column=0, columnspan=4, sticky="w", pady=(0, 4))
+            row=8, column=0, columnspan=4, sticky="w", pady=(0, 4))
         ttk.Label(f, wraplength=820, justify="left", foreground="#555", text=(
             "Take a backup before changing anything — it is your restore point. "
             "The file is named after the device serial and the date.")).grid(
-            row=8, column=0, columnspan=4, sticky="w", pady=(0, 10))
+            row=9, column=0, columnspan=4, sticky="w", pady=(0, 10))
 
-        ttk.Label(f, text="Save backups to").grid(row=9, column=0, sticky="w",
+        ttk.Label(f, text="Save backups to").grid(row=10, column=0, sticky="w",
                                                   padx=(0, 8), pady=3)
         self.v_backup_dir = tk.StringVar(value=str(ROOT / "configs"))
         e = ttk.Entry(f, textvariable=self.v_backup_dir, width=52)
-        e.grid(row=9, column=1, columnspan=2, sticky="we", pady=3)
+        e.grid(row=10, column=1, columnspan=2, sticky="we", pady=3)
         Tooltip(e, "Where config backup files are written. Defaults to a "
                    "'configs' folder next to this program.")
         ttk.Button(f, text="Browse…", width=11,
                    command=self.act_browse_backup_dir).grid(
-            row=9, column=3, sticky="w", padx=(8, 0))
+            row=10, column=3, sticky="w", padx=(8, 0))
 
         row = ttk.Frame(f)
-        row.grid(row=10, column=0, columnspan=4, sticky="w", pady=(12, 0))
+        row.grid(row=11, column=0, columnspan=4, sticky="w", pady=(12, 0))
         b2 = ttk.Button(row, text="Download config backup", command=self.act_backup)
         b2.pack(side="left")
         self.action_buttons.append(b2)
         ttk.Button(row, text="Open backup folder", width=19,
                    command=self.act_open_backup_dir).pack(side="left", padx=8)
 
-        ttk.Separator(f, orient="horizontal").grid(row=11, column=0, columnspan=4,
+        ttk.Separator(f, orient="horizontal").grid(row=12, column=0, columnspan=4,
                                                    sticky="ew", pady=16)
         ttk.Label(f, justify="left", wraplength=820, foreground="#555", text=(
             "The FortiGate uses a self-signed certificate, so this tool skips "
             "certificate verification — that is expected and not a problem on a "
             "direct cable connection.")).grid(
-            row=12, column=0, columnspan=4, sticky="w")
+            row=13, column=0, columnspan=4, sticky="w")
         f.columnconfigure(2, weight=1)
 
     # ---- tab 2: networks ------------------------------------------------
@@ -1462,6 +1497,8 @@ class App(tk.Tk):
                     self._set_busy(False, "Failed — see the log.")
                     self._write_log(f"[!] {payload}", "fail")
                     messagebox.showerror(APP_TITLE, str(payload)[:1200])
+                elif kind == "remember":
+                    self._remember_now(quiet=False)
                 elif kind == "device":
                     self.device_info = payload
                     self.dev_label.configure(text=payload)
@@ -1498,6 +1535,8 @@ class App(tk.Tk):
             self.q.put(("device", text))
             log(f"[ok] connected to {st['hostname']} — serial {st['serial']}, "
                 f"firmware {st['version']}")
+            # Only ever store credentials that have just been proven to work.
+            self.q.put(("remember", None))
             lic = utm.licence_state(fg)
             if lic:
                 pending = [k for k, v in lic.items() if v != "valid"]
@@ -1750,6 +1789,105 @@ class App(tk.Tk):
                 log(f"  {len(missing)} to add, {len(extra)} to remove — press "
                     f"'Update blocked sites now' to apply.", "warn")
         self._run("Check blocked sites", job)
+
+    # ---- remembered connections ------------------------------------------
+    def _saved_hosts(self):
+        try:
+            return connections.hosts(ROOT)
+        except Exception:
+            return []
+
+    def _refresh_hosts(self, select=None):
+        hosts = self._saved_hosts()
+        self.f_host.entry.configure(values=hosts)
+        if select:
+            self.f_host.set(select)
+        self._show_remember_state()
+
+    def _show_remember_state(self):
+        host = self.f_host.get()
+        got = connections.lookup(ROOT, host) if host else None
+        if not got:
+            self.remember_hint.configure(
+                text="not remembered yet" if host else "", foreground="#666")
+            return
+        _user, _pw, how = got
+        text = {"dpapi": "remembered (encrypted to your Windows account)",
+                "plain": "remembered (NOT encrypted on this machine)",
+                "locked": "remembered here, but the password will not decrypt "
+                          "-- saved by another Windows user. Re-type it.",
+                "none": "address and username remembered, no password"}.get(
+            how, "remembered")
+        self.remember_hint.configure(
+            text=text, foreground="#b00020" if how in ("plain", "locked")
+            else "#1e7b1e")
+
+    def _host_changed(self):
+        """Fill in the credentials for whichever address is now typed."""
+        if not self.v_remember.get():
+            self._show_remember_state()
+            return
+        got = connections.lookup(ROOT, self.f_host.get())
+        if got:
+            user, password, how = got
+            if user:
+                self.f_user.set(user)
+            # A blank stored password is still an answer -- a factory unit has
+            # one -- but never wipe a typed one with a failed decrypt.
+            if how != "locked":
+                self.f_pass.set(password)
+        self._show_remember_state()
+
+    def act_remember_toggle(self):
+        host = self.f_host.get()
+        if not host:
+            return
+        if self.v_remember.get():
+            self._remember_now(quiet=False)
+        else:
+            if connections.forget(ROOT, host):
+                self._write_log(f"[ok] {host} forgotten -- its password is no "
+                                f"longer stored on this laptop", "ok")
+            self._refresh_hosts()
+
+    def _remember_now(self, quiet=True):
+        """Store the current connection if the box is ticked."""
+        if not self.v_remember.get():
+            return
+        host = self.f_host.get()
+        if not host:
+            return
+        try:
+            how = connections.remember(ROOT, host, self.f_user.get(),
+                                       self.f_pass.get())
+        except connections.ConnectionError_ as e:
+            self._write_log(f"[!] could not remember this connection: {e}",
+                            "fail")
+            return
+        if not quiet:
+            note = ("encrypted to your Windows account" if how == "dpapi"
+                    else "WITHOUT encryption -- this machine has no DPAPI"
+                    if how == "plain" else "username only, no password given")
+            self._write_log(f"[ok] {host} remembered ({note}). Stored in "
+                            f"{connections.store_path(ROOT).name} beside the "
+                            f"program, never in a branch file.", "ok")
+        self._refresh_hosts(select=host)
+
+    def act_forget_connection(self):
+        host = self.f_host.get()
+        if not host:
+            return
+        if not connections.lookup(ROOT, host):
+            messagebox.showinfo(APP_TITLE, f"{host} is not remembered.")
+            return
+        if not messagebox.askokcancel(
+                APP_TITLE, f"Forget the saved username and password for "
+                           f"{host}?\n\nThe firewall is not touched."):
+            return
+        connections.forget(ROOT, host)
+        self.v_remember.set(False)
+        self._write_log(f"[ok] {host} forgotten", "ok")
+        self._refresh_hosts()
 
     # ---- is filtering actually switched on? ------------------------------
     def act_policy_state(self):

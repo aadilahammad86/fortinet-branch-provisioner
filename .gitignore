@@ -1,6 +1,9 @@
 # Secrets
 .env
 
+# Remembered firewall logins (DPAPI-encrypted, this laptop only)
+connections.json
+
 # Config backups may contain sensitive data
 configs/*.conf
 configs/*.bak
