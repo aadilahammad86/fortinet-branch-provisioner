@@ -151,23 +151,59 @@ def search(sigs, needle="", category=""):
     return out
 
 
-def resolve(sigs, names):
-    """(found, missing) -- map signature names to the device's own ids.
+def _key(text):
+    """Fold a signature name for comparison: 'Facebook.Messenger' -> 'facebookmessenger'.
 
-    Matching is exact first, then case-insensitive, then 'starts with', so
-    "Telegram" also picks up "Telegram_FileTransfer" style variants.
+    FortiGuard punctuates inconsistently between builds -- IMO.im, Line_Chat,
+    Facebook.Messenger -- and an operator should not have to know which. Only
+    letters and digits survive.
     """
-    by_exact = {str(s["name"]).lower(): s for s in sigs}
-    found, missing = [], []
+    return "".join(c for c in str(text).lower() if c.isalnum())
+
+
+def resolve_report(sigs, names):
+    """[(wanted, [signatures], how)] -- exactly what each name matched, and why.
+
+    Reported per name rather than as one total, because "31 selected" tells
+    you nothing about the one you actually care about not being there.
+    """
+    folded = [(s, _key(s["name"])) for s in sigs]
+    report = []
     for want in names:
-        w = want.lower()
-        hit = by_exact.get(w)
-        if hit:
-            found.append(hit)
+        w = _key(want)
+        if not w:
             continue
-        prefixed = [s for s in sigs if str(s["name"]).lower().startswith(w)]
-        if prefixed:
-            found.extend(prefixed)
+        # Exact match plus the app's own sub-signatures. FortiGuard splits an
+        # application into pieces -- Telegram, Telegram_File.Transfer,
+        # Telegram_Voice -- and blocking only the parent leaves the pieces
+        # running. The separator test keeps it to the same family, so "Line"
+        # never drags in "LinkedIn".
+        exact = [s for s, k in folded if k == w]
+        family = [s for s in sigs
+                  if any(str(s["name"]).lower().startswith(want.lower() + sep)
+                         for sep in (".", "_", "-", " "))]
+        both = exact + [s for s in family if s not in exact]
+        if both:
+            report.append((want, both,
+                           "exact" if not family else "exact + sub-signatures"))
+            continue
+        prefix = [s for s, k in folded if k.startswith(w)]
+        if prefix:
+            report.append((want, prefix, "starts with"))
+            continue
+        # Last resort: the name appears inside a longer signature name, e.g.
+        # "IMO" inside "Yahoo.IMO". Kept last so it never shadows a real match.
+        inside = [s for s, k in folded if w in k]
+        report.append((want, inside, "contains" if inside else "not found"))
+    return report
+
+
+def resolve(sigs, names):
+    """(found, missing) -- signature names mapped to this device's own ids."""
+    found, missing = [], []
+    for want, hits, _how in resolve_report(sigs, names):
+        if hits:
+            found.extend(hits)
         else:
             missing.append(want)
     seen, unique = set(), []

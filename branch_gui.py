@@ -33,7 +33,7 @@ from fortigate import appctrl, branch, ddns, templates, utm, vpn
 from fortigate.templates import TemplateError
 
 APP_TITLE = "FortiGate Branch Provisioner"
-APP_VERSION = "1.3.0-rc3"
+APP_VERSION = "1.3.0-rc4"
 
 
 def app_dir():
@@ -234,6 +234,9 @@ class AppBrowser(tk.Toplevel):
              "Telegram, IMO, Botim, Line, Viber, WeChat, Signal, Messenger, "
              "Snapchat, Discord, Skype and similar. WhatsApp is never "
              "included."),
+            ("Block social apps", self._block_social,
+             "Facebook, Instagram, X/Twitter, TikTok, Reddit, Pinterest, "
+             "Tumblr, LinkedIn, Threads."),
         ):
             b = ttk.Button(btns, text=text, command=cmd, width=22)
             b.pack(side="left", padx=(0, 6))
@@ -328,22 +331,54 @@ class AppBrowser(tk.Toplevel):
         self._fill()
 
     def _block_messaging(self):
-        found, missing = appctrl.resolve(self.sigs, appctrl.MESSAGING_APPS)
-        if not found:
+        self._block_set(appctrl.MESSAGING_APPS, "messaging")
+
+    def _block_social(self):
+        self._block_set(appctrl.SOCIAL_APPS, "social media")
+
+    def _block_set(self, names, label):
+        """Select a named set, reporting per name what it matched and why."""
+        if not self.sigs:
             messagebox.showinfo("Application signatures",
-                                "Load the signatures from the firewall first.")
+                                "Press 'Load from firewall' first.")
             return
-        self.blocked |= {s["id"] for s in found}
-        self.dirty = True
-        self._fill(note=f"added {len(found)} messaging signatures")
-        self.app._write_log(
-            f"[ok] selected {len(found)} messaging signatures: "
-            + ", ".join(s["name"] for s in found[:12])
-            + (" ..." if len(found) > 12 else ""), "ok")
-        if missing:
+        report = appctrl.resolve_report(self.sigs, names)
+        self.app._write_log(f"Matching the {label} list against this "
+                            f"firewall's {len(self.sigs)} signatures:", "head")
+        added, missed = set(), []
+        for want, hits, how in report:
+            if not hits:
+                missed.append(want)
+                self.app._write_log(f"  {want:<20} NOT IN THIS FIRMWARE", "warn")
+                continue
+            added |= {s["id"] for s in hits}
+            shown = ", ".join(s["name"] for s in hits[:6])
+            more = f" (+{len(hits) - 6} more)" if len(hits) > 6 else ""
             self.app._write_log(
-                f"[!] not in this firmware's database: {', '.join(missing)}",
-                "warn")
+                f"  {want:<20} {len(hits):>3} signature(s) [{how}]: "
+                f"{shown}{more}", "ok")
+
+        new = added - self.blocked
+        self.blocked |= added
+        self.dirty = bool(new) or self.dirty
+        self.v_only_blocked.set(True)          # show the result immediately
+        self._fill(note=f"{len(new)} newly selected from the {label} list")
+        self.app._write_log(
+            f"[ok] {len(added)} signature(s) selected, {len(new)} of them new. "
+            f"NOTHING IS SENT until you press 'Save to firewall'.",
+            "ok" if new else "warn")
+        if missed:
+            self.app._write_log(
+                f"[!] {len(missed)} name(s) have no signature in this "
+                f"firmware: {', '.join(missed)}. That is usually because the "
+                f"signature database has never updated -- it needs the unit "
+                f"registered with FortiCare.", "warn")
+        messagebox.showinfo(
+            "Application signatures",
+            f"{len(added)} {label} signature(s) selected"
+            f"{f', {len(missed)} name(s) not in this firmware' if missed else ''}."
+            f"\n\nThey are ticked locally and shown in the list now.\n"
+            f"Press 'Save to firewall' to actually block them.")
 
     def _sort(self, key):
         self._sort_rev = not self._sort_rev if key == self._sort_key else False
@@ -1809,6 +1844,13 @@ class App(tk.Tk):
                 log("[!] no policy uses this sensor, so nothing is actually "
                     "being blocked. Run a full Apply to attach it.", "fail")
             b.dirty = False
+            # Re-read rather than assume: the window should show what the
+            # firewall says, not what we asked for.
+            sigs, path = appctrl.load_signatures(fg)
+            live = appctrl.read_sensor(fg, utm.APPLIST_NAME)
+            log(f"[ok] firewall now blocks {len(live['applications'])} "
+                f"individual application(s)")
+            self.q.put(("apps", (sigs, live["applications"], "after saving")))
         self._run("Save application blocks", job)
 
     # ---- dynamic DNS -----------------------------------------------------
